@@ -1,3 +1,4 @@
+
 name: Compilar Pixel Ultra Launcher
 
 on:
@@ -24,7 +25,7 @@ jobs:
           gradle-version: '8.7'
 
       - name: Compilar APK de alto rendimiento
-        run: gradle assembleDebug --no-daemon
+        run: gradle clean assembleDebug --no-daemon
 
       - name: Subir APK listo para instalar
         uses: actions/upload-artifact@v4
