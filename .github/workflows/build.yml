@@ -24,8 +24,8 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Limpiar y Compilar APK de alto rendimiento
-        run: ./gradlew clean assembleDebug --no-daemon
+      - name: Compilar APK de alto rendimiento
+        run: gradle clean assembleDebug --no-daemon
 
       - name: Subir APK listo para instalar
         uses: actions/upload-artifact@v4
