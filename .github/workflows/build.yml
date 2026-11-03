@@ -22,11 +22,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Construir APK real
+      - name: 3. Limpiar conflictos y construir APK
         run: |
+          rm -f local.properties settings.gradle.kts build.gradle.kts app/build.gradle.kts
+
           mkdir -p app/src/main/java/com/atenea/pixelultralauncher
-          find . -maxdepth 3 -name "MainActivity.kt" -exec cp {} app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt \;
-          find . -maxdepth 3 -name "AndroidManifest.xml" -exec cp {} app/src/main/AndroidManifest.xml \;
+          find . -maxdepth 4 -name "MainActivity.kt" -exec cp {} app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt \;
+          find . -maxdepth 4 -name "AndroidManifest.xml" -exec cp {} app/src/main/AndroidManifest.xml \;
 
           cat << 'EOF' > settings.gradle
           pluginManagement {
@@ -92,7 +94,7 @@ jobs:
           gradle wrapper --gradle-version 8.4
           ./gradlew assembleDebug
 
-      - name: 4. Guardar APK en Artifacts y Releases
+      - name: 4. Publicar APK en Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
