@@ -1,11 +1,13 @@
 
-
 name: Compilar APK Real
 
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -21,14 +23,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
-      - name: Crear estructura de proyecto y compilar con Gradle
+      - name: Crear estructura y compilar APK
         run: |
           mkdir -p app/src/main/java/com/atenea/pixelultralauncher
           
-          # Buscar y colocar MainActivity.kt y AndroidManifest.xml en su ruta
+          # Colocar MainActivity.kt y AndroidManifest.xml en su sitio
           find . -maxdepth 3 -name "MainActivity.kt" -exec cp {} app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt \;
           find . -maxdepth 3 -name "AndroidManifest.xml" -exec cp {} app/src/main/AndroidManifest.xml \;
 
@@ -97,11 +101,17 @@ jobs:
           }
           EOF
 
-          gradle wrapper --gradle-version 8.4
-          ./gradlew assembleDebug
+          gradle assembleDebug
 
-      - name: Subir APK listo para instalar
+      - name: Subir APK a Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Aura-Stream-APK-Instalable
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publicar APK directo en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Aura Stream v1.0.${{ github.run_number }}"
+          files: app/build/outputs/apk/debug/app-debug.apk
