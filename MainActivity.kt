@@ -693,7 +693,7 @@ fun AppRow(app: AppItem, theme: LauncherTheme, isFavorite: Boolean, onClick: () 
     }
 }
 
-fn launchApp(context: Context, packageName: String) {
+fun launchApp(context: Context, packageName: String) {
     context.packageManager.getLaunchIntentForPackage(packageName)?.let {
         it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(it)
