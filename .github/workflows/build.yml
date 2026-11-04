@@ -1,0 +1,1185 @@
+name: Compilar APK Directo
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Leer archivos
+        uses: actions/checkout@v4
+
+      - name: 2. Activar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 4. Construir Clon Exacto de Niagara Launcher
+        run: |
+          rm -rf app build .gradle local.properties settings.gradle* build.gradle* gradle.properties MainActivity.kt
+          mkdir -p app/src/main/java/com/atenea/pixelultralauncher
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+          sed -i 's/^[[:space:]]*//' gradle.properties
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "AuraStreamLauncher"
+          include(":app")
+          EOF
+          sed -i 's/^          //' settings.gradle.kts
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          sed -i 's/^          //' build.gradle.kts
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.atenea.pixelultralauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.atenea.pixelultralauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 2
+                  versionName = "2.0-Niagara"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          sed -i 's/^          //' app/build.gradle.kts
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+              <application
+                  android:label="Aura Niagara"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          sed -i 's/^          //' app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+          package com.atenea.pixelultralauncher
+
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.graphics.Bitmap
+          import android.graphics.Canvas as AndroidCanvas
+          import android.graphics.drawable.BitmapDrawable
+          import android.graphics.drawable.Drawable
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.provider.AlarmClock
+          import android.provider.Settings
+          import android.text.format.DateFormat
+          import android.view.HapticFeedbackConstants
+          import androidx.activity.ComponentActivity
+          import androidx.activity.OnBackPressedCallback
+          import androidx.activity.compose.setContent
+          import androidx.compose.animation.core.animateFloatAsState
+          import androidx.compose.animation.core.spring
+          import androidx.compose.animation.core.tween
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.PaddingValues
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.navigationBarsPadding
+          import androidx.compose.foundation.layout.offset
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.statusBarsPadding
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.Close
+          import androidx.compose.material.icons.filled.Delete
+          import androidx.compose.material.icons.filled.Info
+          import androidx.compose.material.icons.filled.Search
+          import androidx.compose.material.icons.filled.Settings
+          import androidx.compose.material.icons.filled.Star
+          import androidx.compose.material3.AlertDialog
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.IconButton
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.TextButton
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.graphics.StrokeCap
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalView
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.IntSize
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.view.WindowCompat
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import java.util.Date
+          import kotlin.math.PI
+          import kotlin.math.abs
+          import kotlin.math.cos
+          import kotlin.math.hypot
+          import kotlin.math.roundToInt
+          import kotlin.math.sin
+
+          data class AppItem(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap?,
+              val initial: Char
+          )
+
+          data class LauncherTheme(
+              val id: String,
+              val name: String,
+              val bgTop: Color,
+              val bgBottom: Color,
+              val accent: Color,
+              val surface: Color,
+              val textPrimary: Color,
+              val textSecondary: Color
+          )
+
+          val NIAGARA_THEMES = listOf(
+              LauncherTheme(
+                  id = "niagara_dark",
+                  name = "Niagara Original (Cristal Oscuro)",
+                  bgTop = Color(0xFF0F172A),
+                  bgBottom = Color(0xFF020617),
+                  accent = Color(0xFF38BDF8),
+                  surface = Color(0xFF1E293B),
+                  textPrimary = Color(0xFFF8FAFC),
+                  textSecondary = Color(0xFF94A3B8)
+              ),
+              LauncherTheme(
+                  id = "oled",
+                  name = "OLED Pure Black",
+                  bgTop = Color(0xFF000000),
+                  bgBottom = Color(0xFF000000),
+                  accent = Color(0xFF00E5FF),
+                  surface = Color(0xFF121212),
+                  textPrimary = Color(0xFFFFFFFF),
+                  textSecondary = Color(0xFF888888)
+              ),
+              LauncherTheme(
+                  id = "pixel",
+                  name = "Pixel Material You",
+                  bgTop = Color(0xFF18181B),
+                  bgBottom = Color(0xFF09090B),
+                  accent = Color(0xFFA8C7FA),
+                  surface = Color(0xFF27272A),
+                  textPrimary = Color(0xFFFAFAFA),
+                  textSecondary = Color(0xFFA1A1AA)
+              ),
+              LauncherTheme(
+                  id = "emerald",
+                  name = "Bosque Esmeralda",
+                  bgTop = Color(0xFF062019),
+                  bgBottom = Color(0xFF03110D),
+                  accent = Color(0xFF34D399),
+                  surface = Color(0xFF0D3327),
+                  textPrimary = Color(0xFFECFDF5),
+                  textSecondary = Color(0xFFA7F3D0)
+              )
+          )
+
+          // Índice de Niagara: Estrella (Favoritos) + A..Z + #
+          val NIAGARA_INDEX: List<Char> = listOf('★') + ('A'..'Z').toList() + listOf('#')
+          val CORNER_INDICES: Set<Int> = setOf(0, 1, 7, 14, 21, 26, 27)
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                      override fun handleOnBackPressed() {}
+                  })
+                  setContent {
+                      NiagaraCloneApp()
+                  }
+              }
+          }
+
+          fun getBatteryPercentage(context: Context): Int {
+              return try {
+                  val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                  val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                  val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                  if (level >= 0 && scale > 0) (level * 100) / scale else 100
+              } catch (_: Exception) {
+                  100
+              }
+          }
+
+          @Composable
+          fun NiagaraCloneApp() {
+              val context = LocalContext.current
+              val view = LocalView.current
+              val density = LocalDensity.current
+              val prefs = remember { context.getSharedPreferences("niagara_clone_prefs", Context.MODE_PRIVATE) }
+
+              var selectedThemeId by remember {
+                  mutableStateOf(prefs.getString("theme_id", "niagara_dark") ?: "niagara_dark")
+              }
+              val currentTheme = remember(selectedThemeId) {
+                  NIAGARA_THEMES.find { it.id == selectedThemeId } ?: NIAGARA_THEMES.first()
+              }
+
+              // Modo de ola: false = Derecha (Niagara Clásico) / true = Izquierda (Curva C)
+              var waveOnLeft by remember {
+                  mutableStateOf(prefs.getBoolean("wave_left", false))
+              }
+              // Modo esquinas mágicas (solo mostrar esquinas en reposo o todo el abecedario)
+              var magicCornersOnly by remember {
+                  mutableStateOf(prefs.getBoolean("magic_corners", false))
+              }
+
+              var favoritePackages by remember {
+                  val saved = prefs.getStringSet("favorites", null)
+                  mutableStateOf(saved?.toSet() ?: emptySet<String>())
+              }
+
+              var apps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+              var searchQuery by remember { mutableStateOf("") }
+              var isSearching by remember { mutableStateOf(false) }
+              var showThemeDialog by remember { mutableStateOf(false) }
+              var showSettingsDialog by remember { mutableStateOf(false) }
+              var selectedAppForMenu by remember { mutableStateOf<AppItem?>(null) }
+
+              // Estado de la Ola de Niagara
+              var activeChar by remember { mutableStateOf<Char>('★') }
+              var activeWaveIndex by remember { mutableStateOf<Int?>(null) }
+              var touchY by remember { mutableStateOf<Float?>(null) }
+              var containerSize by remember { mutableStateOf(IntSize(1080, 2400)) }
+
+              val listState = rememberLazyListState()
+
+              var currentTime by remember { mutableStateOf("") }
+              var currentDate by remember { mutableStateOf("") }
+              var batteryLevel by remember { mutableStateOf(100) }
+
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      val now = Date()
+                      currentTime = DateFormat.format("HH:mm", now).toString()
+                      val rawDate = DateFormat.format("EEE, d MMM", now).toString()
+                      currentDate = if (rawDate.isNotEmpty()) {
+                          rawDate.substring(0, 1).uppercase() + rawDate.substring(1)
+                      } else {
+                          rawDate
+                      }
+                      batteryLevel = getBatteryPercentage(context)
+                      delay(2000L)
+                  }
+              }
+
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val pm = context.packageManager
+                      val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                          addCategory(Intent.CATEGORY_LAUNCHER)
+                      }
+                      val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+                      val loadedApps = resolveInfos.mapNotNull { ri ->
+                          val pkg = ri.activityInfo.packageName
+                          if (pkg == context.packageName) return@mapNotNull null
+                          val label = ri.loadLabel(pm)?.toString()?.trim() ?: pkg
+                          val firstChar = if (label.isNotEmpty()) label[0].uppercaseChar() else '#'
+                          val initial = if (firstChar in 'A'..'Z') firstChar else '#'
+                          val drawable = ri.loadIcon(pm)
+                          AppItem(
+                              label = label,
+                              packageName = pkg,
+                              icon = drawableToBitmap(drawable),
+                              initial = initial
+                          )
+                      }.sortedBy { it.label.lowercase() }
+
+                      withContext(Dispatchers.Main) {
+                          apps = loadedApps
+                          if (favoritePackages.isEmpty() && loadedApps.isNotEmpty()) {
+                              val defaultFavs = loadedApps.take(8).map { it.packageName }.toSet()
+                              favoritePackages = defaultFavs
+                              prefs.edit().putStringSet("favorites", defaultFavs).apply()
+                          }
+                      }
+                  }
+              }
+
+              val favoriteApps = remember(apps, favoritePackages) {
+                  favoritePackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } }
+              }
+
+              val displayedApps = remember(apps, favoriteApps, searchQuery, isSearching, activeChar) {
+                  when {
+                      isSearching && searchQuery.isNotBlank() ->
+                          apps.filter { it.label.contains(searchQuery.trim(), ignoreCase = true) }
+                      activeChar == '★' -> favoriteApps
+                      else -> {
+                          val exact = apps.filter { it.initial == activeChar }
+                          if (exact.isNotEmpty()) exact else apps
+                      }
+                  }
+              }
+
+              val w = containerSize.width.toFloat().coerceAtLeast(1f)
+              val h = containerSize.height.toFloat().coerceAtLeast(1f)
+              val topWaveY = h * 0.16f
+              val bottomWaveY = h * 0.86f
+
+              // Calcula los puntos de cada letra con la deformación de la Ola Niagara + Curva C
+              val wavePoints = remember(containerSize, touchY, waveOnLeft) {
+                  val total = NIAGARA_INDEX.size
+                  val safeTotal = if (total > 1) total - 1 else 1
+                  val maxWaveDisplacement = with(density) { 64.dp.toPx() }
+                  val waveRadius = with(density) { 115.dp.toPx() }
+
+                  NIAGARA_INDEX.indices.map { i ->
+                      val t = i.toFloat() / safeTotal.toFloat()
+                      val baseY = topWaveY + t * (bottomWaveY - topWaveY)
+
+                      // Ligera curvatura ergonómica en C cuando está en reposo
+                      val cCurveOffset = sin(t * PI).toFloat() * with(density) { 10.dp.toPx() }
+                      val baseX = if (waveOnLeft) {
+                          with(density) { 26.dp.toPx() } + cCurveOffset
+                      } else {
+                          w - with(density) { 26.dp.toPx() } - cCurveOffset
+                      }
+
+                      val currentTouchY = touchY
+                      val waveShift = if (currentTouchY != null) {
+                          val distY = abs(baseY - currentTouchY)
+                          if (distY < waveRadius) {
+                              val factor = (1f + cos((distY / waveRadius) * PI.toFloat())) / 2f
+                              factor * maxWaveDisplacement
+                          } else {
+                              0f
+                          }
+                      } else {
+                          0f
+                      }
+
+                      val finalX = if (waveOnLeft) baseX + waveShift else baseX - waveShift
+                      Offset(finalX, baseY)
+                  }
+              }
+
+              fun handleWaveTouch(yPos: Float) {
+                  touchY = yPos
+                  val clampedY = yPos.coerceIn(topWaveY, bottomWaveY)
+                  val fraction = (clampedY - topWaveY) / (bottomWaveY - topWaveY).coerceAtLeast(1f)
+                  val idx = (fraction * (NIAGARA_INDEX.size - 1)).roundToInt()
+                      .coerceIn(0, NIAGARA_INDEX.size - 1)
+
+                  if (activeWaveIndex != idx) {
+                      activeWaveIndex = idx
+                      activeChar = NIAGARA_INDEX[idx]
+                      isSearching = false
+                      searchQuery = ""
+                      view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                  }
+              }
+
+              val accentColor = currentTheme.accent
+
+              Box(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .background(
+                          Brush.verticalGradient(
+                              colors = listOf(currentTheme.bgTop, currentTheme.bgBottom)
+                          )
+                      )
+                      .statusBarsPadding()
+                      .navigationBarsPadding()
+                      .onSizeChanged { containerSize = it }
+              ) {
+                  // 1. LÍNEA GUÍA CURVA Y ESTELA LUMINOSA DE LA OLA NIAGARA
+                  Canvas(modifier = Modifier.fillMaxSize()) {
+                      if (wavePoints.size > 1) {
+                          val guidePath = Path()
+                          guidePath.moveTo(wavePoints[0].x, wavePoints[0].y)
+                          for (i in 1 until wavePoints.size) {
+                              guidePath.lineTo(wavePoints[i].x, wavePoints[i].y)
+                          }
+                          drawPath(
+                              path = guidePath,
+                              color = accentColor.copy(alpha = if (touchY != null) 0.45f else 0.16f),
+                              style = Stroke(
+                                  width = if (touchY != null) 4.dp.toPx() else 2.dp.toPx(),
+                                  cap = StrokeCap.Round
+                              )
+                          )
+
+                          val activeIdx = activeWaveIndex
+                          if (activeIdx != null && activeIdx in wavePoints.indices) {
+                              drawCircle(
+                                  color = accentColor.copy(alpha = 0.25f),
+                                  radius = 22.dp.toPx(),
+                                  center = wavePoints[activeIdx]
+                              )
+                          }
+                      }
+                  }
+
+                  // 2. CONTENIDO PRINCIPAL DE NIAGARA (WIDGET SUPERIOR + LISTA EN CASCADA)
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .padding(
+                              start = if (waveOnLeft) 66.dp else 28.dp,
+                              end = if (waveOnLeft) 28.dp else 66.dp,
+                              top = 24.dp,
+                              bottom = 16.dp
+                          )
+                  ) {
+                      // Cabecera Niagara At-a-Glance
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.Top
+                      ) {
+                          Column {
+                              Text(
+                                  text = currentTime,
+                                  color = currentTheme.textPrimary,
+                                  fontSize = 56.sp,
+                                  fontWeight = FontWeight.Light,
+                                  letterSpacing = (-2).sp,
+                                  modifier = Modifier.clickable {
+                                      try {
+                                          context.startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS).apply {
+                                              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                          })
+                                      } catch (_: Exception) {}
+                                  }
+                              )
+                              Row(
+                                  verticalAlignment = Alignment.CenterVertically,
+                                  modifier = Modifier.clickable {
+                                      try {
+                                          context.startActivity(Intent(Intent.ACTION_MAIN).apply {
+                                              addCategory(Intent.CATEGORY_APP_CALENDAR)
+                                              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                          })
+                                      } catch (_: Exception) {}
+                                  }
+                              ) {
+                                  Text(
+                                      text = currentDate,
+                                      color = currentTheme.accent,
+                                      fontSize = 15.sp,
+                                      fontWeight = FontWeight.Medium
+                                  )
+                                  Text(
+                                      text = "  •  🔋 $batteryLevel%",
+                                      color = currentTheme.textSecondary,
+                                      fontSize = 14.sp,
+                                      fontWeight = FontWeight.Medium
+                                  )
+                              }
+                          }
+
+                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              if (activeChar != '★' || isSearching) {
+                                  TextButton(
+                                      onClick = {
+                                          activeChar = '★'
+                                          isSearching = false
+                                          searchQuery = ""
+                                      }
+                                  ) {
+                                      Text("★ Inicio", color = currentTheme.accent, fontSize = 13.sp)
+                                  }
+                              }
+                              IconButton(
+                                  onClick = { showSettingsDialog = true },
+                                  modifier = Modifier
+                                      .size(36.dp)
+                                      .background(currentTheme.surface.copy(alpha = 0.7f), CircleShape)
+                              ) {
+                                  Icon(
+                                      imageVector = Icons.Default.Settings,
+                                      contentDescription = "Ajustes",
+                                      tint = currentTheme.textSecondary,
+                                      modifier = Modifier.size(18.dp)
+                                  )
+                              }
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(18.dp))
+
+                      // Barra de búsqueda rápida de Niagara (visible al pulsar la moneda/lupa)
+                      if (isSearching) {
+                          Row(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .background(currentTheme.surface, RoundedCornerShape(24.dp))
+                                  .border(1.dp, currentTheme.accent.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                                  .padding(horizontal = 16.dp, vertical = 12.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Icon(
+                                  imageVector = Icons.Default.Search,
+                                  contentDescription = null,
+                                  tint = currentTheme.accent,
+                                  modifier = Modifier.size(18.dp)
+                              )
+                              Spacer(modifier = Modifier.width(10.dp))
+                              BasicTextField(
+                                  value = searchQuery,
+                                  onValueChange = { searchQuery = it },
+                                  singleLine = true,
+                                  textStyle = TextStyle(color = currentTheme.textPrimary, fontSize = 16.sp),
+                                  cursorBrush = SolidColor(currentTheme.accent),
+                                  modifier = Modifier.weight(1f),
+                                  decorationBox = { innerTextField ->
+                                      if (searchQuery.isEmpty()) {
+                                          Text(
+                                              text = "Buscar entre ${apps.size} aplicaciones...",
+                                              color = currentTheme.textSecondary,
+                                              fontSize = 15.sp
+                                          )
+                                      }
+                                      innerTextField()
+                                  }
+                              )
+                              IconButton(
+                                  onClick = {
+                                      searchQuery = ""
+                                      isSearching = false
+                                  },
+                                  modifier = Modifier.size(22.dp)
+                              ) {
+                                  Icon(
+                                      imageVector = Icons.Default.Close,
+                                      contentDescription = null,
+                                      tint = currentTheme.textSecondary
+                                  )
+                              }
+                          }
+                          Spacer(modifier = Modifier.height(14.dp))
+                      }
+
+                      // Cabecera Gigante cuando estás navegando por una letra de la Ola
+                      if (!isSearching && activeChar != '★') {
+                          Row(
+                              verticalAlignment = Alignment.Bottom,
+                              modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
+                          ) {
+                              Text(
+                                  text = activeChar.toString(),
+                                  color = currentTheme.accent,
+                                  fontSize = 42.sp,
+                                  fontWeight = FontWeight.Bold
+                              )
+                              Spacer(modifier = Modifier.width(12.dp))
+                              Text(
+                                  text = "${displayedApps.size} apps",
+                                  color = currentTheme.textSecondary,
+                                  fontSize = 13.sp,
+                                  modifier = Modifier.padding(bottom = 8.dp)
+                              )
+                          }
+                      }
+
+                      // Lista vertical minimalista de Niagara
+                      LazyColumn(
+                          state = listState,
+                          modifier = Modifier.fillMaxSize(),
+                          verticalArrangement = Arrangement.spacedBy(4.dp),
+                          contentPadding = PaddingValues(
+                              top = if (activeChar == '★' && !isSearching) 28.dp else 4.dp,
+                              bottom = 88.dp
+                          )
+                      ) {
+                          items(displayedApps, key = { "${activeChar}_${it.packageName}" }) { app ->
+                              NiagaraAppRow(
+                                  app = app,
+                                  theme = currentTheme,
+                                  isFavorite = app.packageName in favoritePackages,
+                                  showStar = activeChar != '★',
+                                  onClick = { launchApp(context, app.packageName) },
+                                  onLongClick = { selectedAppForMenu = app }
+                              )
+                          }
+                      }
+                  }
+
+                  // 3. LA OLA ALFABÉTICA INTERACTIVA DE NIAGARA
+                  Box(
+                      modifier = Modifier
+                          .fillMaxHeight()
+                          .width(84.dp)
+                          .align(if (waveOnLeft) Alignment.CenterStart else Alignment.CenterEnd)
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectTapGestures(
+                                  onPress = { offset ->
+                                      handleWaveTouch(offset.y)
+                                      tryAwaitRelease()
+                                      touchY = null
+                                      activeWaveIndex = null
+                                  }
+                              )
+                          }
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectDragGestures(
+                                  onDragStart = { offset -> handleWaveTouch(offset.y) },
+                                  onDrag = { change, _ ->
+                                      change.consume()
+                                      handleWaveTouch(change.position.y)
+                                  },
+                                  onDragEnd = {
+                                      touchY = null
+                                      activeWaveIndex = null
+                                  },
+                                  onDragCancel = {
+                                      touchY = null
+                                      activeWaveIndex = null
+                                  }
+                              )
+                          }
+                  ) {}
+
+                  // Renderizado de cada letra sobre la Ola de Niagara
+                  wavePoints.forEachIndexed { index, pt ->
+                      val char = NIAGARA_INDEX[index]
+                      val isSelected = activeWaveIndex == index
+                      val isCurrentSection = activeChar == char && activeWaveIndex == null
+                      val dist = activeWaveIndex?.let { abs(index - it) } ?: 99
+                      val isCorner = index in CORNER_INDICES
+
+                      val alphaVal = when {
+                          touchY != null -> when {
+                              dist == 0 -> 1f
+                              dist <= 3 -> 0.9f
+                              else -> 0.45f
+                          }
+                          magicCornersOnly -> if (isCorner || isCurrentSection) 0.85f else 0f
+                          else -> if (isCurrentSection) 1f else 0.6f
+                      }
+
+                      val scaleVal = when {
+                          isSelected -> 1.65f
+                          dist == 1 -> 1.25f
+                          isCurrentSection -> 1.2f
+                          else -> 1f
+                      }
+
+                      if (alphaVal > 0.02f) {
+                          val boxPx = with(density) { 26.dp.toPx() }
+                          Box(
+                              modifier = Modifier
+                                  .offset {
+                                      IntOffset(
+                                          x = (pt.x - boxPx / 2f).roundToInt(),
+                                          y = (pt.y - boxPx / 2f).roundToInt()
+                                      )
+                                  }
+                                  .size(26.dp)
+                                  .scale(scaleVal)
+                                  .alpha(alphaVal),
+                              contentAlignment = Alignment.Center
+                          ) {
+                              Text(
+                                  text = char.toString(),
+                                  color = if (isSelected || isCurrentSection) currentTheme.accent else currentTheme.textPrimary,
+                                  fontSize = if (isSelected) 14.sp else 11.sp,
+                                  fontWeight = if (isSelected || isCurrentSection || isCorner) FontWeight.Bold else FontWeight.Medium
+                              )
+                          }
+                      }
+                  }
+
+                  // 4. BURBUJA FLOTANTE DE LA OLA NIAGARA JUNTO AL PULGAR
+                  val currentIdx = activeWaveIndex
+                  val currentTouchY = touchY
+                  if (currentIdx != null && currentTouchY != null) {
+                      val bubbleSizePx = with(density) { 68.dp.toPx() }
+                      val bubbleX = if (waveOnLeft) {
+                          with(density) { 108.dp.toPx() }
+                      } else {
+                          w - with(density) { 108.dp.toPx() } - bubbleSizePx
+                      }
+                      val bubbleY = (currentTouchY - bubbleSizePx / 2f)
+                          .coerceIn(topWaveY - 20f, bottomWaveY - bubbleSizePx + 20f)
+
+                      Box(
+                          modifier = Modifier
+                              .offset {
+                                  IntOffset(
+                                      x = bubbleX.roundToInt(),
+                                      y = bubbleY.roundToInt()
+                                  )
+                              }
+                              .size(68.dp)
+                              .background(currentTheme.surface.copy(alpha = 0.96f), CircleShape)
+                              .border(2.dp, currentTheme.accent, CircleShape),
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Text(
+                              text = NIAGARA_INDEX[currentIdx].toString(),
+                              color = currentTheme.accent,
+                              fontSize = 32.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                      }
+                  }
+
+                  // 5. NIAGARA COIN / BOTÓN FLOTANTE INFERIOR (BÚSQUEDA + TEMA)
+                  Row(
+                      modifier = Modifier
+                          .align(if (waveOnLeft) Alignment.BottomEnd else Alignment.BottomStart)
+                          .padding(horizontal = 28.dp, vertical = 22.dp),
+                      horizontalArrangement = Arrangement.spacedBy(12.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      // Moneda de Búsqueda Rápida de Niagara
+                      Box(
+                          modifier = Modifier
+                              .size(50.dp)
+                              .clip(CircleShape)
+                              .background(currentTheme.surface)
+                              .border(1.5.dp, currentTheme.accent.copy(alpha = 0.7f), CircleShape)
+                              .clickable {
+                                  isSearching = !isSearching
+                                  if (!isSearching) searchQuery = ""
+                              },
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Icon(
+                              imageVector = if (isSearching) Icons.Default.Close else Icons.Default.Search,
+                              contentDescription = "Buscar",
+                              tint = currentTheme.accent,
+                              modifier = Modifier.size(22.dp)
+                          )
+                      }
+
+                      // Botón rápido de Temas
+                      Box(
+                          modifier = Modifier
+                              .size(42.dp)
+                              .clip(CircleShape)
+                              .background(currentTheme.surface.copy(alpha = 0.85f))
+                              .border(1.dp, currentTheme.textSecondary.copy(alpha = 0.3f), CircleShape)
+                              .clickable { showThemeDialog = true },
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Text(text = "🎨", fontSize = 16.sp)
+                      }
+                  }
+
+                  // DIÁLOGO DE TEMAS NIAGARA
+                  if (showThemeDialog) {
+                      AlertDialog(
+                          onDismissRequest = { showThemeDialog = false },
+                          containerColor = currentTheme.surface,
+                          title = {
+                              Text("Temas de Niagara", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold)
+                          },
+                          text = {
+                              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  NIAGARA_THEMES.forEach { t ->
+                                      val isSelected = t.id == currentTheme.id
+                                      Row(
+                                          modifier = Modifier
+                                              .fillMaxWidth()
+                                              .clip(RoundedCornerShape(12.dp))
+                                              .background(if (isSelected) t.accent.copy(alpha = 0.2f) else Color.Transparent)
+                                              .border(
+                                                  1.dp,
+                                                  if (isSelected) t.accent else Color.Gray.copy(alpha = 0.3f),
+                                                  RoundedCornerShape(12.dp)
+                                              )
+                                              .clickable {
+                                                  selectedThemeId = t.id
+                                                  prefs.edit().putString("theme_id", t.id).apply()
+                                                  showThemeDialog = false
+                                              }
+                                              .padding(12.dp),
+                                          verticalAlignment = Alignment.CenterVertically
+                                      ) {
+                                          Box(modifier = Modifier.size(18.dp).background(t.accent, CircleShape))
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text(text = t.name, color = currentTheme.textPrimary, fontSize = 15.sp)
+                                      }
+                                  }
+                              }
+                          },
+                          confirmButton = {
+                              TextButton(onClick = { showThemeDialog = false }) {
+                                  Text("Cerrar", color = currentTheme.accent)
+                              }
+                          }
+                      )
+                  }
+
+                  // DIÁLOGO DE AJUSTES DE NIAGARA
+                  if (showSettingsDialog) {
+                      AlertDialog(
+                          onDismissRequest = { showSettingsDialog = false },
+                          containerColor = currentTheme.surface,
+                          title = {
+                              Text("Ajustes de Niagara", color = currentTheme.textPrimary, fontWeight = FontWeight.Bold)
+                          },
+                          text = {
+                              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  TextButton(
+                                      onClick = {
+                                          waveOnLeft = !waveOnLeft
+                                          prefs.edit().putBoolean("wave_left", waveOnLeft).apply()
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text(
+                                          text = if (waveOnLeft) "Cambiar Ola al borde Derecho (Clásico)" else "Cambiar Ola al borde Izquierdo (Curva C)",
+                                          color = currentTheme.accent,
+                                          fontSize = 14.sp
+                                      )
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          magicCornersOnly = !magicCornersOnly
+                                          prefs.edit().putBoolean("magic_corners", magicCornersOnly).apply()
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text(
+                                          text = if (magicCornersOnly) "Mostrar todo el abecedario en reposo" else "Ocultar letras intermedias (Modo Mágico)",
+                                          color = currentTheme.textPrimary,
+                                          fontSize = 14.sp
+                                      )
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                                          showSettingsDialog = false
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("Fijar como Launcher predeterminado", color = currentTheme.accent, fontSize = 14.sp)
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                          showSettingsDialog = false
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("Ajustes del sistema Android", color = currentTheme.textSecondary, fontSize = 14.sp)
+                                  }
+                              }
+                          },
+                          confirmButton = {
+                              TextButton(onClick = { showSettingsDialog = false }) {
+                                  Text("Hecho", color = currentTheme.accent)
+                              }
+                          }
+                      )
+                  }
+
+                  // MENÚ POP-UP DE APLICACIÓN (ESTILO NIAGARA)
+                  selectedAppForMenu?.let { app ->
+                      val isFav = app.packageName in favoritePackages
+                      AlertDialog(
+                          onDismissRequest = { selectedAppForMenu = null },
+                          containerColor = currentTheme.surface,
+                          title = {
+                              Text(app.label, color = currentTheme.textPrimary, fontWeight = FontWeight.Bold)
+                          },
+                          text = {
+                              Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                  TextButton(
+                                      onClick = {
+                                          val updated = favoritePackages.toMutableSet()
+                                          if (isFav) updated.remove(app.packageName) else updated.add(app.packageName)
+                                          favoritePackages = updated
+                                          prefs.edit().putStringSet("favorites", updated).apply()
+                                          selectedAppForMenu = null
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(
+                                              imageVector = Icons.Default.Star,
+                                              contentDescription = null,
+                                              tint = currentTheme.accent,
+                                              modifier = Modifier.size(18.dp)
+                                          )
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text(
+                                              text = if (isFav) "Quitar de Favoritos (★)" else "Fijar en Favoritos (★)",
+                                              color = currentTheme.accent,
+                                              fontSize = 15.sp
+                                          )
+                                      }
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          context.startActivity(
+                                              Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                  data = Uri.fromParts("package", app.packageName, null)
+                                                  addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                              }
+                                          )
+                                          selectedAppForMenu = null
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(
+                                              imageVector = Icons.Default.Info,
+                                              contentDescription = null,
+                                              tint = currentTheme.textPrimary,
+                                              modifier = Modifier.size(18.dp)
+                                          )
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text("Información de la aplicación", color = currentTheme.textPrimary, fontSize = 15.sp)
+                                      }
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          val intent = Intent(Intent.ACTION_DELETE).apply {
+                                              data = Uri.parse("package:${app.packageName}")
+                                              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                          }
+                                          context.startActivity(intent)
+                                          selectedAppForMenu = null
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(
+                                              imageVector = Icons.Default.Delete,
+                                              contentDescription = null,
+                                              tint = Color(0xFFFF5252),
+                                              modifier = Modifier.size(18.dp)
+                                          )
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text("Desinstalar aplicación", color = Color(0xFFFF5252), fontSize = 15.sp)
+                                      }
+                                  }
+                              }
+                          },
+                          confirmButton = {
+                              TextButton(onClick = { selectedAppForMenu = null }) {
+                                  Text("Cerrar", color = currentTheme.textSecondary)
+                              }
+                          }
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun NiagaraAppRow(
+              app: AppItem,
+              theme: LauncherTheme,
+              isFavorite: Boolean,
+              showStar: Boolean,
+              onClick: () -> Unit,
+              onLongClick: () -> Unit
+          ) {
+              Row(
+                  modifier = Modifier
+                      .fillMaxWidth()
+                      .clip(RoundedCornerShape(14.dp))
+                      .pointerInput(app.packageName) {
+                          detectTapGestures(
+                              onTap = { onClick() },
+                              onLongPress = { onLongClick() }
+                          )
+                      }
+                      .padding(horizontal = 8.dp, vertical = 9.dp),
+                  verticalAlignment = Alignment.CenterVertically
+              ) {
+                  if (app.icon != null) {
+                      Image(
+                          bitmap = app.icon.asImageBitmap(),
+                          contentDescription = null,
+                          modifier = Modifier
+                              .size(42.dp)
+                              .clip(RoundedCornerShape(12.dp))
+                      )
+                  } else {
+                      Box(
+                          modifier = Modifier
+                              .size(42.dp)
+                              .background(theme.accent.copy(alpha = 0.2f), CircleShape)
+                      )
+                  }
+                  Spacer(modifier = Modifier.width(16.dp))
+                  Text(
+                      text = app.label,
+                      color = theme.textPrimary,
+                      fontSize = 17.sp,
+                      fontWeight = FontWeight.Medium,
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis,
+                      modifier = Modifier.weight(1f)
+                  )
+                  if (isFavorite && showStar) {
+                      Icon(
+                          imageVector = Icons.Default.Star,
+                          contentDescription = null,
+                          tint = theme.accent,
+                          modifier = Modifier.size(15.dp)
+                      )
+                  }
+              }
+          }
+
+          fun launchApp(context: Context, packageName: String) {
+              context.packageManager.getLaunchIntentForPackage(packageName)?.let {
+                  it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  context.startActivity(it)
+              }
+          }
+
+          fun drawableToBitmap(drawable: Drawable): Bitmap {
+              if (drawable is BitmapDrawable && drawable.bitmap != null) return drawable.bitmap
+              val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+              val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+              val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+              val canvas = AndroidCanvas(bmp)
+              drawable.setBounds(0, 0, canvas.width, canvas.height)
+              drawable.draw(canvas)
+              return bmp
+          }
+          EOF
+          sed -i 's/^          //' app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+
+          gradle assembleDebug --no-daemon
+
+      - name: 5. Publicar APK en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0.${{ github.run_number }}
+          name: "Aura Niagara v2.0.${{ github.run_number }} - Clon Completo"
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
