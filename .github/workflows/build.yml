@@ -1,0 +1,2089 @@
+name: Compilar APK Directo
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Leer archivos
+        uses: actions/checkout@v4
+
+      - name: 2. Activar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 4. Construir Lince Iberico v8.0 con Importador de Temas
+        run: |
+          rm -rf app build .gradle local.properties settings.gradle* build.gradle* gradle.properties MainActivity.kt
+          mkdir -p app/src/main/java/com/atenea/pixelultralauncher
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+          sed -i 's/^[[:space:]]*//' gradle.properties
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "LinceIbericoLauncher"
+          include(":app")
+          EOF
+          sed -i 's/^          //' settings.gradle.kts
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          sed -i 's/^          //' build.gradle.kts
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.atenea.pixelultralauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.atenea.pixelultralauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 8
+                  versionName = "8.0-Lince-UniversalThemes"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          sed -i 's/^          //' app/build.gradle.kts
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="org.adw.launcher.THEMES" />
+                  </intent>
+                  <intent>
+                      <action android:name="com.novalauncher.THEME" />
+                  </intent>
+                  <intent>
+                      <action android:name="com.anddoes.launcher.THEME" />
+                  </intent>
+                  <intent>
+                      <action android:name="com.gau.go.launcherex.theme" />
+                  </intent>
+              </queries>
+              <application
+                  android:label="Lince Ibérico"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          sed -i 's/^          //' app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+          package com.atenea.pixelultralauncher
+
+          import android.content.ClipboardManager
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.content.pm.PackageManager
+          import android.content.res.Resources
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas as AndroidCanvas
+          import android.graphics.Color as AndroidColor
+          import android.graphics.drawable.BitmapDrawable
+          import android.graphics.drawable.Drawable
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.format.DateFormat
+          import android.view.HapticFeedbackConstants
+          import android.widget.Toast
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.PaddingValues
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.navigationBarsPadding
+          import androidx.compose.foundation.layout.offset
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.statusBarsPadding
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.Add
+          import androidx.compose.material.icons.filled.ArrowBack
+          import androidx.compose.material.icons.filled.Check
+          import androidx.compose.material.icons.filled.Close
+          import androidx.compose.material.icons.filled.Delete
+          import androidx.compose.material.icons.filled.Edit
+          import androidx.compose.material.icons.filled.Info
+          import androidx.compose.material.icons.filled.Search
+          import androidx.compose.material.icons.filled.Settings
+          import androidx.compose.material.icons.filled.Star
+          import androidx.compose.material3.AlertDialog
+          import androidx.compose.material3.Button
+          import androidx.compose.material3.ButtonDefaults
+          import androidx.compose.material3.Checkbox
+          import androidx.compose.material3.CheckboxDefaults
+          import androidx.compose.material3.Divider
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.IconButton
+          import androidx.compose.material3.Slider
+          import androidx.compose.material3.SliderDefaults
+          import androidx.compose.material3.Switch
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.TextButton
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.ColorFilter
+          import androidx.compose.ui.graphics.ColorMatrix
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.graphics.StrokeCap
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.drawscope.DrawScope
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.graphics.toArgb
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalView
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.IntSize
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.view.WindowCompat
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import org.xmlpull.v1.XmlPullParser
+          import org.xmlpull.v1.XmlPullParserFactory
+          import java.io.File
+          import java.io.FileOutputStream
+          import java.util.Calendar
+          import java.util.Date
+          import kotlin.math.PI
+          import kotlin.math.abs
+          import kotlin.math.cos
+          import kotlin.math.roundToInt
+          import kotlin.math.sin
+
+          data class AppItem(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap?,
+              val initial: Char
+          )
+
+          data class ExternalThemePack(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap?,
+              val isDedicatedIconPack: Boolean,
+              val dominantColorHex: Int
+          )
+
+          data class LinceThemePreset(
+              val id: String,
+              val title: String,
+              val subtitle: String,
+              val wallpaper: String,
+              val iconPack: String,
+              val textColor: String,
+              val clockStyle: Int,
+              val linceClockStyle: Int,
+              val hideAlphabet: Boolean,
+              val previewColor: Color,
+              val customAccentHex: Int? = null,
+              val externalPackPkg: String? = null
+          )
+
+          val BUILTIN_THEME_PRESETS = listOf(
+              LinceThemePreset(
+                  id = "egipto_nilo_piramides",
+                  title = "Misterios del Nilo y Pirámides (Egipto)",
+                  subtitle = "Pirámides de Giza y Río Nilo • Iconos Oro Faraónico • Reloj Solar de Ra",
+                  wallpaper = "nilo_piramides",
+                  iconPack = "gold_pharaoh",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 4,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFFD4AF37)
+              ),
+              LinceThemePreset(
+                  id = "egipto_noche_faraonica",
+                  title = "Noche Faraónica en el Nilo (Egipto)",
+                  subtitle = "Cielo lapislázuli estrellado • Pirámides doradas • Cartucho Real Egipcio",
+                  wallpaper = "noche_faraonica",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 5,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF1E3A8A)
+              ),
+              LinceThemePreset(
+                  id = "lince_andujar",
+                  title = "Acecho en la Sierra (Lince Ibérico)",
+                  subtitle = "Fondo bosque nocturno de lince • Iconos Simply White • Reloj Orejas de Lince",
+                  wallpaper = "sierra_andujar",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 1,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF1E3A1A)
+              ),
+              LinceThemePreset(
+                  id = "lince_donana",
+                  title = "Ocaso en Doñana (Lince Ibérico)",
+                  subtitle = "Atardecer ocre silvestre • Iconos Contorno Ámbar • Reloj Mirada Salvaje",
+                  wallpaper = "ocaso_donana",
+                  iconPack = "neon_cyan",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 3,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF7C2D12)
+              ),
+              LinceThemePreset(
+                  id = "lince_noche_oled",
+                  title = "Mirada Nocturna OLED (Lince)",
+                  subtitle = "Fondo negro 100% con ojos dorados acechando • Reloj Huella Salvaje",
+                  wallpaper = "mirada_oled",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 2,
+                  hideAlphabet = true,
+                  previewColor = Color(0xFF0D0D0D)
+              )
+          )
+
+          val LINCE_INDEX: List<Char> = listOf('★') + ('A'..'Z').toList() + listOf('#')
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  setContent {
+                      LinceIbericoLauncher()
+                  }
+              }
+          }
+
+          fun expandStatusBar(context: Context) {
+              try {
+                  val service = context.getSystemService("statusbar")
+                  val statusbarManager = Class.forName("android.app.StatusBarManager")
+                  val expand = statusbarManager.getMethod("expandNotificationsPanel")
+                  expand.invoke(service)
+              } catch (_: Exception) {}
+          }
+
+          fun getBatteryPercentage(context: Context): Int {
+              return try {
+                  val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                  val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                  val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                  if (level >= 0 && scale > 0) (level * 100) / scale else 100
+              } catch (_: Exception) {
+                  100
+              }
+          }
+
+          // Extrae automáticamente el color vibrante dominante de cualquier icono o imagen importada
+          fun extractVibrantColor(bitmap: Bitmap?): Int {
+              if (bitmap == null) return 0xFFF59E0B.toInt()
+              var bestColor = 0xFFF59E0B.toInt()
+              var maxScore = -1f
+              val w = bitmap.width
+              val h = bitmap.height
+              val stepX = (w / 12).coerceAtLeast(1)
+              val stepY = (h / 12).coerceAtLeast(1)
+              val hsv = FloatArray(3)
+
+              for (x in 0 until w step stepX) {
+                  for (y in 0 until h step stepY) {
+                      val pixel = bitmap.getPixel(x, y)
+                      val alpha = AndroidColor.alpha(pixel)
+                      if (alpha < 180) continue
+                      AndroidColor.colorToHSV(pixel, hsv)
+                      val sat = hsv[1]
+                      val value = hsv[2]
+                      if (value in 0.25f..0.98f && sat > 0.25f) {
+                          val score = sat * 2f + value
+                          if (score > maxScore) {
+                              maxScore = score
+                              bestColor = AndroidColor.HSVToColor(floatArrayOf(hsv[0], sat.coerceAtLeast(0.65f), value.coerceAtLeast(0.85f)))
+                          }
+                      }
+                  }
+              }
+              return bestColor
+          }
+
+          // Lee los iconos reales de un Icon Pack externo (Nova / ADW / Lawnchair) mediante appfilter.xml
+          fun loadExternalIconPackMap(pm: PackageManager, iconPackPkg: String): Pair<Resources?, Map<String, String>> {
+              val map = mutableMapOf<String, String>()
+              return try {
+                  val res = pm.getResourcesForApplication(iconPackPkg)
+                  var parser: XmlPullParser? = null
+                  try {
+                      val input = res.assets.open("appfilter.xml")
+                      val factory = XmlPullParserFactory.newInstance()
+                      parser = factory.newPullParser()
+                      parser.setInput(input, "UTF-8")
+                  } catch (_: Exception) {
+                      val xmlId = res.getIdentifier("appfilter", "xml", iconPackPkg)
+                      if (xmlId != 0) {
+                          parser = res.getXml(xmlId)
+                      }
+                  }
+
+                  if (parser != null) {
+                      var eventType = parser.eventType
+                      while (eventType != XmlPullParser.END_DOCUMENT) {
+                          if (eventType == XmlPullParser.START_TAG && parser.name == "item") {
+                              val comp = parser.getAttributeValue(null, "component")
+                              val drawableName = parser.getAttributeValue(null, "drawable")
+                              if (!comp.isNullOrBlank() && !drawableName.isNullOrBlank()) {
+                                  val pkgPart = comp.substringAfter("{", "").substringBefore("/", "")
+                                  if (pkgPart.isNotEmpty()) {
+                                      map[pkgPart] = drawableName
+                                  }
+                              }
+                          }
+                          eventType = parser.next()
+                      }
+                  }
+                  Pair(res, map)
+              } catch (_: Exception) {
+                  Pair(null, emptyMap())
+              }
+          }
+
+          @Composable
+          fun LinceIbericoLauncher() {
+              val context = LocalContext.current
+              val view = LocalView.current
+              val density = LocalDensity.current
+              val prefs = remember { context.getSharedPreferences("lince_iberico_v8_prefs", Context.MODE_PRIVATE) }
+
+              val isFirstRun = remember { prefs.getBoolean("first_run_v8", true) }
+              var currentScreen by remember {
+                  mutableStateOf(if (isFirstRun) "WELCOME" else "HOME")
+              }
+
+              var wallpaperStyle by remember {
+                  mutableStateOf(prefs.getString("wallpaper_style", "nilo_piramides") ?: "nilo_piramides")
+              }
+              var customWallpaperBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+              // Color de acento personalizado (extraído de temas importados o de otras apps)
+              var customAccentHex by remember {
+                  mutableStateOf(prefs.getInt("custom_accent_hex", 0))
+              }
+              // Paquete de iconos externo activo (si se importó de otra app)
+              var externalIconPackPkg by remember {
+                  mutableStateOf(prefs.getString("external_icon_pack_pkg", "") ?: "")
+              }
+
+              // Lista de temas importados por el usuario guardados de forma simple
+              var importedThemesRaw by remember {
+                  mutableStateOf(prefs.getStringSet("imported_themes_list", emptySet())?.toSet() ?: emptySet())
+              }
+
+              val importedThemePresets = remember(importedThemesRaw) {
+                  importedThemesRaw.mapNotNull { line ->
+                      val parts = line.split("|")
+                      if (parts.size >= 6) {
+                          val id = parts[0]
+                          val title = parts[1]
+                          val subtitle = parts[2]
+                          val wall = parts[3]
+                          val iconMode = parts[4]
+                          val colorHex = parts[5].toIntOrNull() ?: 0xFF38BDF8.toInt()
+                          val extPkg = if (parts.size >= 7) parts[6] else ""
+                          LinceThemePreset(
+                              id = id,
+                              title = title,
+                              subtitle = subtitle,
+                              wallpaper = wall,
+                              iconPack = iconMode,
+                              textColor = "light",
+                              clockStyle = 0,
+                              linceClockStyle = 4,
+                              hideAlphabet = false,
+                              previewColor = Color(colorHex),
+                              customAccentHex = colorHex,
+                              externalPackPkg = extPkg
+                          )
+                      } else null
+                  }
+              }
+
+              var iconPackMode by remember {
+                  mutableStateOf(prefs.getString("icon_pack", "gold_pharaoh") ?: "gold_pharaoh")
+              }
+              var textColorMode by remember {
+                  mutableStateOf(prefs.getString("text_color_mode", "light") ?: "light")
+              }
+              var fontMode by remember {
+                  mutableStateOf(prefs.getString("font_mode", "serif") ?: "serif")
+              }
+              var clockStyle by remember {
+                  mutableStateOf(prefs.getInt("clock_style", 0))
+              }
+              var showCalendarDate by remember {
+                  mutableStateOf(prefs.getBoolean("show_date", true))
+              }
+              var showWeather by remember {
+                  mutableStateOf(prefs.getBoolean("show_weather", true))
+              }
+              var showBattery by remember {
+                  mutableStateOf(prefs.getBoolean("show_battery", true))
+              }
+              var linceClockStyle by remember {
+                  mutableStateOf(prefs.getInt("lince_clock_style", 4))
+              }
+              var hideAlphabet by remember {
+                  mutableStateOf(prefs.getBoolean("hide_alphabet", false))
+              }
+              var hideFavoriteNames by remember {
+                  mutableStateOf(prefs.getBoolean("hide_fav_names", false))
+              }
+              var showLinceButton by remember {
+                  mutableStateOf(prefs.getBoolean("show_lince_btn", true))
+              }
+              var waveOnLeft by remember {
+                  mutableStateOf(prefs.getBoolean("wave_left", false))
+              }
+              var iconSizeDp by remember {
+                  mutableStateOf(prefs.getFloat("icon_size", 44f))
+              }
+              var verticalOffsetDp by remember {
+                  mutableStateOf(prefs.getFloat("vertical_offset", 20f))
+              }
+              var isMovingWidgetMode by remember { mutableStateOf(false) }
+
+              var favoritePackages by remember {
+                  val saved = prefs.getStringSet("favorites", null)
+                  mutableStateOf(saved?.toSet() ?: emptySet<String>())
+              }
+
+              var apps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+              var detectedThemePacks by remember { mutableStateOf<List<ExternalThemePack>>(emptyList()) }
+              var searchQuery by remember { mutableStateOf("") }
+              var favSearchQuery by remember { mutableStateOf("") }
+              var importThemeCodeInput by remember { mutableStateOf("") }
+              var isSearching by remember { mutableStateOf(false) }
+
+              var showLinceWidgetSheet by remember { mutableStateOf(false) }
+              var showLinceClockPicker by remember { mutableStateOf(false) }
+              var selectedAppForMenu by remember { mutableStateOf<AppItem?>(null) }
+
+              var activeChar by remember { mutableStateOf<Char>('★') }
+              var activeWaveIndex by remember { mutableStateOf<Int?>(null) }
+              var touchY by remember { mutableStateOf<Float?>(null) }
+              var containerSize by remember { mutableStateOf(IntSize(1080, 2400)) }
+
+              val listState = rememberLazyListState()
+
+              var currentTime by remember { mutableStateOf("") }
+              var currentDateShort by remember { mutableStateOf("") }
+              var currentDayName by remember { mutableStateOf("JUEVES") }
+              var currentDayNumber by remember { mutableStateOf("05") }
+              var batteryLevel by remember { mutableStateOf(100) }
+              var hourFloat by remember { mutableStateOf(10f) }
+              var minuteFloat by remember { mutableStateOf(10f) }
+
+              fun saveImportedTheme(
+                  title: String,
+                  subtitle: String,
+                  wallStyle: String,
+                  iconMode: String,
+                  colorHex: Int,
+                  extPkg: String = ""
+              ) {
+                  val id = "imp_${System.currentTimeMillis()}"
+                  val entry = "$id|$title|$subtitle|$wallStyle|$iconMode|$colorHex|$extPkg"
+                  val updated = importedThemesRaw.toMutableSet()
+                  updated.add(entry)
+                  importedThemesRaw = updated
+                  prefs.edit().putStringSet("imported_themes_list", updated).apply()
+              }
+
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val customFile = File(context.filesDir, "custom_lince_wallpaper.jpg")
+                      if (customFile.exists()) {
+                          val bmp = BitmapFactory.decodeFile(customFile.absolutePath)
+                          withContext(Dispatchers.Main) {
+                              customWallpaperBitmap = bmp
+                          }
+                      }
+                  }
+              }
+
+              // Selector 1: Solo cambiar fondo de pantalla desde galería
+              val galleryLauncher = rememberLauncherForActivityResult(
+                  contract = ActivityResultContracts.GetContent()
+              ) { uri: Uri? ->
+                  if (uri != null) {
+                      try {
+                          val inputStream = context.contentResolver.openInputStream(uri)
+                          val bmp = BitmapFactory.decodeStream(inputStream)
+                          inputStream?.close()
+                          if (bmp != null) {
+                              customWallpaperBitmap = bmp
+                              wallpaperStyle = "custom_gallery"
+                              prefs.edit().putString("wallpaper_style", "custom_gallery").apply()
+                              val outFile = File(context.filesDir, "custom_lince_wallpaper.jpg")
+                              FileOutputStream(outFile).use { out ->
+                                  bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                              }
+                          }
+                      } catch (_: Exception) {}
+                  }
+              }
+
+              // Selector 2: MOTOR CAMALEÓN (Importa imagen/captura de otra app -> extrae colores -> crea Tema Completo en 1 clic)
+              val magicThemeFromImageLauncher = rememberLauncherForActivityResult(
+                  contract = ActivityResultContracts.GetContent()
+              ) { uri: Uri? ->
+                  if (uri != null) {
+                      try {
+                          val inputStream = context.contentResolver.openInputStream(uri)
+                          val bmp = BitmapFactory.decodeStream(inputStream)
+                          inputStream?.close()
+                          if (bmp != null) {
+                              val extractedHex = extractVibrantColor(bmp)
+                              customWallpaperBitmap = bmp
+                              wallpaperStyle = "custom_gallery"
+                              customAccentHex = extractedHex
+                              iconPackMode = "custom_accent"
+                              val outFile = File(context.filesDir, "custom_lince_wallpaper.jpg")
+                              FileOutputStream(outFile).use { out ->
+                                  bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                              }
+                              prefs.edit()
+                                  .putString("wallpaper_style", "custom_gallery")
+                                  .putInt("custom_accent_hex", extractedHex)
+                                  .putString("icon_pack", "custom_accent")
+                                  .apply()
+
+                              saveImportedTheme(
+                                  title = "Tema Camaleón (${importedThemePresets.size + 1})",
+                                  subtitle = "Extraído automáticamente de tu imagen e incorporado",
+                                  wallStyle = "custom_gallery",
+                                  iconMode = "custom_accent",
+                                  colorHex = extractedHex
+                              )
+                              Toast.makeText(context, "¡Tema extraído e incorporado con éxito!", Toast.LENGTH_SHORT).show()
+                              currentScreen = "HOME"
+                          }
+                      } catch (_: Exception) {}
+                  }
+              }
+
+              // Selector 3: Importar archivo de tema (.json / .txt) desde otras apps o gestor de archivos
+              val themeFileImporter = rememberLauncherForActivityResult(
+                  contract = ActivityResultContracts.GetContent()
+              ) { uri: Uri? ->
+                  if (uri != null) {
+                      try {
+                          val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                          val hexMatch = Regex("#([0-9A-Fa-f]{6})").find(text)
+                          val parsedColor = if (hexMatch != null) {
+                              AndroidColor.parseColor(hexMatch.value)
+                          } else {
+                              0xFF38BDF8.toInt()
+                          }
+                          customAccentHex = parsedColor
+                          iconPackMode = "custom_accent"
+                          prefs.edit()
+                              .putInt("custom_accent_hex", parsedColor)
+                              .putString("icon_pack", "custom_accent")
+                              .apply()
+                          saveImportedTheme(
+                              title = "Tema de Archivo Externo",
+                              subtitle = "Importado desde archivo de configuración",
+                              wallStyle = wallpaperStyle,
+                              iconMode = "custom_accent",
+                              colorHex = parsedColor
+                          )
+                          Toast.makeText(context, "¡Archivo de tema importado y aplicado!", Toast.LENGTH_SHORT).show()
+                          currentScreen = "HOME"
+                      } catch (_: Exception) {}
+                  }
+              }
+
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      val now = Date()
+                      val cal = Calendar.getInstance()
+                      currentTime = DateFormat.format("HH:mm", now).toString()
+                      currentDateShort = DateFormat.format("EEE, d MMM", now).toString()
+                      currentDayName = DateFormat.format("EEEE", now).toString().uppercase()
+                      currentDayNumber = DateFormat.format("dd", now).toString()
+                      hourFloat = (cal.get(Calendar.HOUR) + cal.get(Calendar.MINUTE) / 60f)
+                      minuteFloat = cal.get(Calendar.MINUTE).toFloat()
+                      batteryLevel = getBatteryPercentage(context)
+                      delay(1000L)
+                  }
+              }
+
+              // Carga de aplicaciones + Detección de Icon Packs externos instalados + Aplicación de iconos externos
+              LaunchedEffect(externalIconPackPkg) {
+                  withContext(Dispatchers.IO) {
+                      val pm = context.packageManager
+                      val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                          addCategory(Intent.CATEGORY_LAUNCHER)
+                      }
+                      val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+
+                      // Detectar apps que son Icon Packs dedicados (Nova, ADW, Apex, Go, Lawnchair)
+                      val iconPackPackages = mutableSetOf<String>()
+                      val themeActions = listOf(
+                          "org.adw.launcher.THEMES",
+                          "com.novalauncher.THEME",
+                          "com.anddoes.launcher.THEME",
+                          "com.gau.go.launcherex.theme"
+                      )
+                      themeActions.forEach { action ->
+                          try {
+                              val packs = pm.queryIntentActivities(Intent(action), 0)
+                              packs.forEach { ri -> iconPackPackages.add(ri.activityInfo.packageName) }
+                          } catch (_: Exception) {}
+                      }
+
+                      // Si el usuario seleccionó un Icon Pack externo, cargamos su mapa de iconos
+                      val (extRes, extMap) = if (externalIconPackPkg.isNotBlank()) {
+                          loadExternalIconPackMap(pm, externalIconPackPkg)
+                      } else {
+                          Pair(null, emptyMap())
+                      }
+
+                      val loadedApps = resolveInfos.mapNotNull { ri ->
+                          val pkg = ri.activityInfo.packageName
+                          if (pkg == context.packageName) return@mapNotNull null
+                          val label = ri.loadLabel(pm)?.toString()?.trim() ?: pkg
+                          val firstChar = if (label.isNotEmpty()) label[0].uppercaseChar() else '#'
+                          val initial = if (firstChar in 'A'..'Z') firstChar else '#'
+
+                          // Si hay un Icon Pack externo activo y tiene icono para esta app, lo usamos
+                          var finalBitmap: Bitmap? = null
+                          if (extRes != null && extMap.containsKey(pkg)) {
+                              try {
+                                  val drawableName = extMap[pkg] ?: ""
+                                  val id = extRes.getIdentifier(drawableName, "drawable", externalIconPackPkg)
+                                  if (id != 0) {
+                                      val extDrawable = extRes.getDrawable(id, null)
+                                      if (extDrawable != null) {
+                                          finalBitmap = drawableToBitmap(extDrawable)
+                                      }
+                                  }
+                              } catch (_: Exception) {}
+                          }
+
+                          if (finalBitmap == null) {
+                              val drawable = ri.loadIcon(pm)
+                              finalBitmap = drawableToBitmap(drawable)
+                          }
+
+                          AppItem(
+                              label = label,
+                              packageName = pkg,
+                              icon = finalBitmap,
+                              initial = initial
+                          )
+                      }.sortedBy { it.label.lowercase() }
+
+                      // Construir lista de packs de temas y apps para importar estilo en 1 toque
+                      val themeCandidates = loadedApps.map { app ->
+                          val isPack = app.packageName in iconPackPackages ||
+                              app.label.contains("icon", ignoreCase = true) ||
+                              app.label.contains("theme", ignoreCase = true) ||
+                              app.label.contains("tema", ignoreCase = true) ||
+                              app.label.contains("pack", ignoreCase = true) ||
+                              app.label.contains("kwgt", ignoreCase = true) ||
+                              app.label.contains("wall", ignoreCase = true)
+                          ExternalThemePack(
+                              label = app.label,
+                              packageName = app.packageName,
+                              icon = app.icon,
+                              isDedicatedIconPack = isPack,
+                              dominantColorHex = extractVibrantColor(app.icon)
+                          )
+                      }.sortedByDescending { it.isDedicatedIconPack }
+
+                      withContext(Dispatchers.Main) {
+                          apps = loadedApps
+                          detectedThemePacks = themeCandidates
+                          if (favoritePackages.isEmpty() && loadedApps.isNotEmpty()) {
+                              val defaultFavs = loadedApps.take(6).map { it.packageName }.toSet()
+                              favoritePackages = defaultFavs
+                              prefs.edit().putStringSet("favorites", defaultFavs).apply()
+                          }
+                      }
+                  }
+              }
+
+              val appFontFamily = remember(fontMode) {
+                  when (fontMode) {
+                      "serif" -> FontFamily.Serif
+                      "mono" -> FontFamily.Monospace
+                      else -> FontFamily.SansSerif
+                  }
+              }
+
+              val isDarkText = textColorMode == "dark"
+              val isEgyptianTheme = wallpaperStyle == "nilo_piramides" || wallpaperStyle == "noche_faraonica"
+
+              val accentColor = when {
+                  customAccentHex != 0 && (iconPackMode == "custom_accent" || externalIconPackPkg.isNotBlank()) -> Color(customAccentHex)
+                  isEgyptianTheme -> Color(0xFFFFD700)
+                  else -> Color(0xFFF59E0B)
+              }
+
+              val primaryTextColor = when {
+                  isDarkText -> Color(0xFF1C1917)
+                  isEgyptianTheme -> Color(0xFFFEF9C3)
+                  else -> Color(0xFFF8FAFC)
+              }
+              val secondaryTextColor = when {
+                  isDarkText -> Color(0xFF78350F)
+                  else -> accentColor.copy(alpha = 0.85f)
+              }
+              val dialogBgColor = Color(0xFF181311)
+
+              fun applyThemePreset(preset: LinceThemePreset) {
+                  wallpaperStyle = preset.wallpaper
+                  iconPackMode = preset.iconPack
+                  textColorMode = preset.textColor
+                  clockStyle = preset.clockStyle
+                  linceClockStyle = preset.linceClockStyle
+                  hideAlphabet = preset.hideAlphabet
+                  showCalendarDate = true
+                  customAccentHex = preset.customAccentHex ?: 0
+                  externalIconPackPkg = preset.externalPackPkg ?: ""
+
+                  prefs.edit()
+                      .putString("wallpaper_style", wallpaperStyle)
+                      .putString("icon_pack", iconPackMode)
+                      .putString("text_color_mode", textColorMode)
+                      .putInt("clock_style", clockStyle)
+                      .putInt("lince_clock_style", linceClockStyle)
+                      .putBoolean("hide_alphabet", hideAlphabet)
+                      .putBoolean("show_date", showCalendarDate)
+                      .putInt("custom_accent_hex", customAccentHex)
+                      .putString("external_icon_pack_pkg", externalIconPackPkg)
+                      .apply()
+              }
+
+              // =========================================================================
+              // PANTALLA NUEVA: IMPORTADOR SIMPLE DE TEMAS DE OTRAS APPS (1 TOQUE)
+              // =========================================================================
+              if (currentScreen == "IMPORT_THEMES") {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF110D0C))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .padding(horizontal = 20.dp, vertical = 14.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "HOME" }) {
+                              Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                          }
+                          Spacer(modifier = Modifier.width(6.dp))
+                          Column {
+                              Text("Importar Tema Externo", color = accentColor, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                              Text("Elige cómo quieres incorporar el tema en 1 toque", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(14.dp))
+
+                      // OPCIÓN 1: CREAR TEMA AUTOMÁTICO DESDE IMAGEN / CAPTURA DE OTRA APP
+                      Button(
+                          onClick = { magicThemeFromImageLauncher.launch("image/*") },
+                          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8)),
+                          shape = RoundedCornerShape(16.dp),
+                          modifier = Modifier.fillMaxWidth().height(54.dp)
+                      ) {
+                          Text("🖼  1. Crear Tema desde Imagen o Captura", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Spacer(modifier = Modifier.height(8.dp))
+
+                      // OPCIÓN 2: IMPORTAR DESDE ARCHIVO O PORTAPAPELES
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.spacedBy(8.dp)
+                      ) {
+                          Button(
+                              onClick = { themeFileImporter.launch("*/*") },
+                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34D399)),
+                              shape = RoundedCornerShape(14.dp),
+                              modifier = Modifier.weight(1f).height(48.dp)
+                          ) {
+                              Text("📂 Importar Archivo", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                          }
+
+                          Button(
+                              onClick = {
+                                  try {
+                                      val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                      val clipText = cb.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                                      val hexMatch = Regex("#([0-9A-Fa-f]{6})").find(clipText)
+                                      val colorInt = if (hexMatch != null) {
+                                          AndroidColor.parseColor(hexMatch.value)
+                                      } else {
+                                          0xFFA855F7.toInt()
+                                      }
+                                      customAccentHex = colorInt
+                                      iconPackMode = "custom_accent"
+                                      prefs.edit()
+                                          .putInt("custom_accent_hex", colorInt)
+                                          .putString("icon_pack", "custom_accent")
+                                          .apply()
+                                      saveImportedTheme(
+                                          title = "Tema del Portapapeles",
+                                          subtitle = "Importado por código rápido",
+                                          wallStyle = wallpaperStyle,
+                                          iconMode = "custom_accent",
+                                          colorHex = colorInt
+                                      )
+                                      Toast.makeText(context, "¡Tema pegado e incorporado!", Toast.LENGTH_SHORT).show()
+                                      currentScreen = "HOME"
+                                  } catch (_: Exception) {}
+                              },
+                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA855F7)),
+                              shape = RoundedCornerShape(14.dp),
+                              modifier = Modifier.weight(1f).height(48.dp)
+                          ) {
+                              Text("📋 Pegar Tema", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(14.dp))
+                      Divider(color = Color.White.copy(alpha = 0.15f))
+                      Spacer(modifier = Modifier.height(10.dp))
+
+                      // OPCIÓN 3: APLICAR PAQUETES DE ICONOS O EXTRAER TEMA DE APPS INSTALADAS EN 1 TOQUE
+                      Text(
+                          text = "📦 3. Toca cualquier Paquete de Iconos o App de tu móvil para importar sus iconos y colores automáticamente:",
+                          color = Color(0xFFFFD700),
+                          fontSize = 13.sp,
+                          fontWeight = FontWeight.Bold
+                      )
+                      Spacer(modifier = Modifier.height(8.dp))
+
+                      LazyColumn(
+                          modifier = Modifier.weight(1f),
+                          verticalArrangement = Arrangement.spacedBy(6.dp)
+                      ) {
+                          items(detectedThemePacks, key = { "pack_${it.packageName}" }) { pack ->
+                              val packColor = Color(pack.dominantColorHex)
+                              val isCurrentlyActive = externalIconPackPkg == pack.packageName
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .clip(RoundedCornerShape(14.dp))
+                                      .background(if (isCurrentlyActive) packColor.copy(alpha = 0.25f) else Color(0xFF1E1614))
+                                      .border(
+                                          1.2.dp,
+                                          if (pack.isDedicatedIconPack) Color(0xFFFFD700) else packColor.copy(alpha = 0.5f),
+                                          RoundedCornerShape(14.dp)
+                                      )
+                                      .clickable {
+                                          externalIconPackPkg = pack.packageName
+                                          customAccentHex = pack.dominantColorHex
+                                          iconPackMode = if (pack.isDedicatedIconPack) "default" else "custom_accent"
+                                          prefs.edit()
+                                              .putString("external_icon_pack_pkg", pack.packageName)
+                                              .putInt("custom_accent_hex", pack.dominantColorHex)
+                                              .putString("icon_pack", iconPackMode)
+                                              .apply()
+
+                                          saveImportedTheme(
+                                              title = "Tema ${pack.label}",
+                                              subtitle = if (pack.isDedicatedIconPack) "Icon Pack externo + Colores" else "Colores y estilo extraídos de ${pack.label}",
+                                              wallStyle = wallpaperStyle,
+                                              iconMode = iconPackMode,
+                                              colorHex = pack.dominantColorHex,
+                                              extPkg = pack.packageName
+                                          )
+                                          Toast.makeText(context, "¡Tema e iconos de ${pack.label} aplicados!", Toast.LENGTH_SHORT).show()
+                                          currentScreen = "HOME"
+                                      }
+                                      .padding(12.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  if (pack.icon != null) {
+                                      Image(
+                                          bitmap = pack.icon.asImageBitmap(),
+                                          contentDescription = null,
+                                          modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
+                                      )
+                                  }
+                                  Spacer(modifier = Modifier.width(12.dp))
+                                  Column(modifier = Modifier.weight(1f)) {
+                                      Row(verticalAlignment = Alignment.CenterVertically) {
+                                          Text(pack.label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                          if (pack.isDedicatedIconPack) {
+                                              Spacer(modifier = Modifier.width(6.dp))
+                                              Box(
+                                                  modifier = Modifier
+                                                      .clip(RoundedCornerShape(6.dp))
+                                                      .background(Color(0xFFFFD700))
+                                                      .padding(horizontal = 6.dp, vertical = 2.dp)
+                                              ) {
+                                                  Text("ICON PACK", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                                              }
+                                          }
+                                      }
+                                      Text(
+                                          text = if (pack.isDedicatedIconPack) "Toca para cargar sus iconos y tema" else "Toca para clonar su paleta de color",
+                                          color = Color.White.copy(alpha = 0.65f),
+                                          fontSize = 11.sp
+                                      )
+                                  }
+                                  Box(
+                                      modifier = Modifier
+                                          .size(24.dp)
+                                          .clip(CircleShape)
+                                          .background(packColor)
+                                          .border(1.dp, Color.White, CircleShape)
+                                  )
+                              }
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 1: BIENVENIDA
+              // =========================================================================
+              if (currentScreen == "WELCOME") {
+                  Box(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(
+                              Brush.verticalGradient(
+                                  colors = listOf(Color(0xFF271C19), Color(0xFF140D0B))
+                              )
+                          )
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .padding(28.dp)
+                  ) {
+                      Column(
+                          modifier = Modifier.fillMaxSize(),
+                          verticalArrangement = Arrangement.SpaceBetween
+                      ) {
+                          Spacer(modifier = Modifier.height(20.dp))
+                          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                              Text(
+                                  text = "Lince Ibérico & Egipto",
+                                  color = accentColor,
+                                  fontSize = 30.sp,
+                                  fontWeight = FontWeight.Bold,
+                                  letterSpacing = 1.sp
+                              )
+                              Spacer(modifier = Modifier.height(18.dp))
+                              Text(
+                                  text = "Naturaleza salvaje ibérica, el Nilo Egipcio e Importador Universal de Temas.",
+                                  color = Color.White,
+                                  fontSize = 21.sp,
+                                  fontWeight = FontWeight.SemiBold,
+                                  lineHeight = 28.sp
+                              )
+                              Spacer(modifier = Modifier.height(14.dp))
+                              Text(
+                                  text = "Elige tus aplicaciones favoritas para el inicio y personaliza en un toque con temas propios o importados de otras apps.",
+                                  color = Color.White.copy(alpha = 0.78f),
+                                  fontSize = 15.sp,
+                                  lineHeight = 22.sp
+                              )
+                          }
+                          Button(
+                              onClick = { currentScreen = "FAVORITES" },
+                              colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                              shape = RoundedCornerShape(28.dp),
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .height(56.dp)
+                          ) {
+                              Text("Elegir aplicaciones favoritas  🐾 ☥", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 2: SELECTOR DE FAVORITOS
+              // =========================================================================
+              if (currentScreen == "FAVORITES") {
+                  val filteredForPicker = remember(apps, favSearchQuery) {
+                      if (favSearchQuery.isBlank()) apps
+                      else apps.filter { it.label.contains(favSearchQuery.trim(), ignoreCase = true) }
+                  }
+
+                  Box(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF140D0B))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                  ) {
+                      Column(modifier = Modifier.fillMaxSize()) {
+                          Column(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .background(Color(0xFF271C19))
+                                  .padding(horizontal = 20.dp, vertical = 18.dp)
+                          ) {
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Text(
+                                      text = "Tus Favoritos",
+                                      color = accentColor,
+                                      fontSize = 24.sp,
+                                      fontWeight = FontWeight.Bold
+                                  )
+                                  Box(
+                                      modifier = Modifier
+                                          .clip(RoundedCornerShape(16.dp))
+                                          .background(accentColor.copy(alpha = 0.2f))
+                                          .padding(horizontal = 12.dp, vertical = 6.dp)
+                                  ) {
+                                      Text(
+                                          text = "${favoritePackages.size} marcadas",
+                                          color = accentColor,
+                                          fontSize = 12.sp,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+                              }
+                              Spacer(modifier = Modifier.height(6.dp))
+                              Text(
+                                  text = "Marca las aplicaciones que mantendrás fijas en la pantalla principal (4 a 8 recomendadas).",
+                                  color = Color.White.copy(alpha = 0.78f),
+                                  fontSize = 13.sp
+                              )
+                              Spacer(modifier = Modifier.height(12.dp))
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .clip(RoundedCornerShape(20.dp))
+                                      .background(Color.White.copy(alpha = 0.14f))
+                                      .padding(horizontal = 14.dp, vertical = 10.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                  Spacer(modifier = Modifier.width(8.dp))
+                                  BasicTextField(
+                                      value = favSearchQuery,
+                                      onValueChange = { favSearchQuery = it },
+                                      singleLine = true,
+                                      textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                                      cursorBrush = SolidColor(Color.White),
+                                      modifier = Modifier.weight(1f),
+                                      decorationBox = { inner ->
+                                          if (favSearchQuery.isEmpty()) {
+                                              Text("Buscar aplicación...", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                                          }
+                                          inner()
+                                      }
+                                  )
+                                  if (favSearchQuery.isNotEmpty()) {
+                                      Icon(
+                                          imageVector = Icons.Default.Close,
+                                          contentDescription = null,
+                                          tint = Color.White,
+                                          modifier = Modifier
+                                              .size(18.dp)
+                                              .clickable { favSearchQuery = "" }
+                                      )
+                                  }
+                              }
+                          }
+
+                          LazyColumn(
+                              modifier = Modifier.weight(1f),
+                              contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                              verticalArrangement = Arrangement.spacedBy(4.dp)
+                          ) {
+                              items(filteredForPicker, key = { "lince_fav_${it.packageName}" }) { app ->
+                                  val isChecked = app.packageName in favoritePackages
+                                  Row(
+                                      modifier = Modifier
+                                          .fillMaxWidth()
+                                          .clip(RoundedCornerShape(14.dp))
+                                          .background(if (isChecked) Color.White.copy(alpha = 0.08f) else Color.Transparent)
+                                          .clickable {
+                                              val updated = favoritePackages.toMutableSet()
+                                              if (isChecked) updated.remove(app.packageName) else updated.add(app.packageName)
+                                              favoritePackages = updated
+                                              prefs.edit().putStringSet("favorites", updated).apply()
+                                              view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                          }
+                                          .padding(horizontal = 12.dp, vertical = 10.dp),
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Checkbox(
+                                          checked = isChecked,
+                                          onCheckedChange = {
+                                              val updated = favoritePackages.toMutableSet()
+                                              if (isChecked) updated.remove(app.packageName) else updated.add(app.packageName)
+                                              favoritePackages = updated
+                                              prefs.edit().putStringSet("favorites", updated).apply()
+                                          },
+                                          colors = CheckboxDefaults.colors(
+                                              checkedColor = accentColor,
+                                              uncheckedColor = Color.White.copy(alpha = 0.6f),
+                                              checkmarkColor = Color.Black
+                                          )
+                                      )
+                                      Spacer(modifier = Modifier.width(12.dp))
+                                      if (app.icon != null) {
+                                          Image(
+                                              bitmap = app.icon.asImageBitmap(),
+                                              contentDescription = null,
+                                              modifier = Modifier
+                                                  .size(38.dp)
+                                                  .clip(RoundedCornerShape(10.dp))
+                                          )
+                                      }
+                                      Spacer(modifier = Modifier.width(14.dp))
+                                      Text(
+                                          text = app.label,
+                                          color = Color.White,
+                                          fontSize = 16.sp,
+                                          fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal,
+                                          modifier = Modifier.weight(1f)
+                                      )
+                                  }
+                              }
+                          }
+
+                          Box(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .background(Color(0xFF140D0B))
+                                  .padding(16.dp)
+                          ) {
+                              Button(
+                                  onClick = {
+                                      prefs.edit().putBoolean("first_run_v8", false).apply()
+                                      currentScreen = "HOME"
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                                  shape = RoundedCornerShape(28.dp),
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .height(54.dp)
+                              ) {
+                                  Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black)
+                                  Spacer(modifier = Modifier.width(8.dp))
+                                  Text("Guardar e ir al Inicio", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                              }
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 3: CONFIGURACIÓN GENERAL
+              // =========================================================================
+              if (currentScreen == "SETTINGS") {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF110D0C))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .verticalScroll(rememberScrollState())
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(12.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "HOME" }) {
+                              Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                          }
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text("Ajustes de Lince Ibérico", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      // Botón destacado arriba del todo para importar temas de otras apps
+                      SettingsCardItem(
+                          title = "📥  Importar Tema / Iconos de otras Apps (1 Toque)",
+                          subtitle = "Usa Icon Packs descargados, extrae temas desde cualquier imagen o pega códigos",
+                          accent = Color(0xFF38BDF8),
+                          onClick = { currentScreen = "IMPORT_THEMES" }
+                      )
+
+                      SettingsCardItem(
+                          title = "★  Editar favoritos (${favoritePackages.size} apps)",
+                          subtitle = "Elige con casillas las aplicaciones del inicio rápido",
+                          accent = accentColor,
+                          onClick = { currentScreen = "FAVORITES" }
+                      )
+
+                      SettingsCardItem(
+                          title = "☥  Galería de Temas (Importados, EgiHe añadido en la **versión 8.0** un sistema de **Importación e Incorporación de Temas Externos en 1 Toque**, diseñado para que puedas traer temas, fondos e iconos de cualquier otra aplicación y queden guardados dentro de tu galería de temas sin configuraciones complicadas.
+
+### Cómo funciona el nuevo sistema simple de importación (v8.0):
+1. **🪄 Importar Tema desde cualquier Imagen o Captura (Auto-Creador en 1 Toque):**
+   * Pulsas el nuevo botón **`📥 Importar Tema`**, eliges cualquier fondo o captura de pantalla descargada de otra app (*Zedge, Backdrops, Pinterest, Walli, etc.*) y el launcher **extrae automáticamente los colores dominantes**, ajusta el color de los iconos, el reloj y el texto a juego, y **lo guarda permanentemente en tu lista «Mis Temas Incorporados»** para que puedas activarlo siempre que quieras con un toque.
+2. **📱 Usar Tema / Fondo en Vivo de otra App (KLWP, Zedge, Google Fondos):**
+   * Incluye el modo **Sincronización con Fondo del Sistema**. Si aplicas un tema animado o fondo desde otra aplicación externa en tu Pixel, el launcher se vuelve transparente automáticamente y adapta sus colores al tema externo.
+3. **📦 Detector automático de Paquetes de Iconos y Apps de Temas:**
+   * Escanea tu móvil para detectar paquetes de iconos instalados (*Nova, Lawnchair, ADW, Icon Pack Studio*) y te permite aplicar sus iconos directamente sobre tus aplicaciones o abrir la app externa para importar nuevos diseños.
+
+---
+
+### Pasos para actualizar `.github/workflows/build.yml`
+
+1. Entra en tu repositorio de GitHub y abre **`.github/workflows/build.yml`**.
+2. Pulsa el icono del **lápiz (Edit)**, selecciona todo (`Ctrl + A`), bórralo y pega este código completo:
+
+```yaml
+name: Compilar APK Directo
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Leer archivos
+        uses: actions/checkout@v4
+
+      - name: 2. Activar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 4. Construir Lince Iberico v8.0 con Importador de Temas
+        run: |
+          rm -rf app build .gradle local.properties settings.gradle* build.gradle* gradle.properties MainActivity.kt
+          mkdir -p app/src/main/java/com/atenea/pixelultralauncher
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+          sed -i 's/^[[:space:]]*//' gradle.properties
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "LinceIbericoLauncher"
+          include(":app")
+          EOF
+          sed -i 's/^          //' settings.gradle.kts
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          sed -i 's/^          //' build.gradle.kts
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.atenea.pixelultralauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.atenea.pixelultralauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 8
+                  versionName = "8.0-Lince-ThemeImporter"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          sed -i 's/^          //' app/build.gradle.kts
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="[http://schemas.android.com/apk/res/android](http://schemas.android.com/apk/res/android)">
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="org.adw.launcher.THEMES" />
+                  </intent>
+                  <intent>
+                      <action android:name="com.novalauncher.THEME" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.SET_WALLPAPER" />
+                  </intent>
+              </queries>
+              <application
+                  android:label="Lince Ibérico"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:theme="@android:style/Theme.DeviceDefault.Wallpaper.NoTitleBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          sed -i 's/^          //' app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+          package com.atenea.pixelultralauncher
+
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas as AndroidCanvas
+          import android.graphics.drawable.BitmapDrawable
+          import android.graphics.drawable.Drawable
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.format.DateFormat
+          import android.view.HapticFeedbackConstants
+          import android.view.WindowManager
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.PaddingValues
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.navigationBarsPadding
+          import androidx.compose.foundation.layout.offset
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.statusBarsPadding
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.Add
+          import androidx.compose.material.icons.filled.ArrowBack
+          import androidx.compose.material.icons.filled.Check
+          import androidx.compose.material.icons.filled.Close
+          import androidx.compose.material.icons.filled.Delete
+          import androidx.compose.material.icons.filled.Edit
+          import androidx.compose.material.icons.filled.Info
+          import androidx.compose.material.icons.filled.Search
+          import androidx.compose.material.icons.filled.Settings
+          import androidx.compose.material.icons.filled.Star
+          import androidx.compose.material3.AlertDialog
+          import androidx.compose.material3.Button
+          import androidx.compose.material3.ButtonDefaults
+          import androidx.compose.material3.Checkbox
+          import androidx.compose.material3.CheckboxDefaults
+          import androidx.compose.material3.Divider
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.IconButton
+          import androidx.compose.material3.Slider
+          import androidx.compose.material3.SliderDefaults
+          import androidx.compose.material3.Switch
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.TextButton
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.ColorFilter
+          import androidx.compose.ui.graphics.ColorMatrix
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.graphics.StrokeCap
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.drawscope.DrawScope
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalView
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.IntSize
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.view.WindowCompat
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import org.xmlpull.v1.XmlPullParser
+          import java.io.File
+          import java.io.FileOutputStream
+          import java.util.Calendar
+          import java.util.Date
+          import kotlin.math.PI
+          import kotlin.math.abs
+          import kotlin.math.cos
+          import kotlin.math.max
+          import kotlin.math.min
+          import kotlin.math.roundToInt
+          import kotlin.math.sin
+
+          data class AppItem(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap?,
+              val initial: Char
+          )
+
+          data class ExternalThemeApp(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap?,
+              val isIconPack: Boolean
+          )
+
+          data class ImportedThemeItem(
+              val id: String,
+              val title: String,
+              val imagePath: String,
+              val accentColorInt: Int,
+              val isDarkBg: Boolean,
+              val clockStyle: Int
+          )
+
+          data class LinceThemePreset(
+              val id: String,
+              val title: String,
+              val subtitle: String,
+              val wallpaper: String,
+              val iconPack: String,
+              val textColor: String,
+              val clockStyle: Int,
+              val linceClockStyle: Int,
+              val hideAlphabet: Boolean,
+              val previewColor: Color,
+              val customAccentInt: Int = 0
+          )
+
+          val LINCE_THEME_PRESETS = listOf(
+              LinceThemePreset(
+                  id = "egipto_nilo_piramides",
+                  title = "Misterios del Nilo y Pirámides (Egipto)",
+                  subtitle = "Pirámides de Giza y Río Nilo • Iconos Oro Faraónico • Reloj Solar de Ra",
+                  wallpaper = "nilo_piramides",
+                  iconPack = "gold_pharaoh",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 4,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFFD4AF37)
+              ),
+              LinceThemePreset(
+                  id = "egipto_noche_faraonica",
+                  title = "Noche Faraónica en el Nilo (Egipto)",
+                  subtitle = "Cielo lapislázuli estrellado • Pirámides doradas • Cartucho Real Egipcio",
+                  wallpaper = "noche_faraonica",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 5,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF1E3A8A)
+              ),
+              LinceThemePreset(
+                  id = "lince_andujar",
+                  title = "Acecho en la Sierra (Lince Ibérico)",
+                  subtitle = "Fondo bosque nocturno de lince • Iconos Simply White • Reloj Orejas de Lince",
+                  wallpaper = "sierra_andujar",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 1,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF1E3A1A)
+              ),
+              LinceThemePreset(
+                  id = "lince_donana",
+                  title = "Ocaso en Doñana (Lince Ibérico)",
+                  subtitle = "Atardecer ocre silvestre • Iconos Contorno Ámbar • Reloj Mirada Salvaje",
+                  wallpaper = "ocaso_donana",
+                  iconPack = "neon_cyan",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 3,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF7C2D12)
+              ),
+              LinceThemePreset(
+                  id = "lince_noche_oled",
+                  title = "Mirada Nocturna OLED (Lince)",
+                  subtitle = "Fondo negro 100% con ojos dorados acechando • Reloj Huella Salvaje",
+                  wallpaper = "mirada_oled",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 2,
+                  hideAlphabet = true,
+                  previewColor = Color(0xFF0D0D0D)
+              )
+          )
+
+          val LINCE_INDEX: List<Char> = listOf('★') + ('A'..'Z').toList() + listOf('#')
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+                  window.setBackgroundDrawableResource(android.R.color.transparent)
+                  setContent {
+                      LinceIbericoLauncher()
+                  }
+              }
+          }
+
+          // Extrae automáticamente el color dominante más vivo y el brillo de cualquier imagen importada
+          fun extractSmartPalette(bmp: Bitmap): Pair<Int, Boolean> {
+              var bestColor = 0xFFFFD700.toInt()
+              var bestScore = -1f
+              var totalLum = 0f
+              var count = 0
+
+              val stepX = (bmp.width / 12).coerceAtLeast(1)
+              val stepY = (bmp.height / 12).coerceAtLeast(1)
+
+              var x = stepX / 2
+              while (x < bmp.width) {
+                  var y = stepY / 2
+                  while (y < bmp.height) {
+                      val pixel = bmp.getPixel(x, y)
+                      val r = (pixel shr 16) and 0xFF
+                      val g = (pixel shr 8) and 0xFF
+                      val b = pixel and 0xFF
+
+                      val lum = (0.299f * r + 0.587f * g + 0.114f * b) / 255f
+                      totalLum += lum
+                      count++
+
+                      val maxC = max(r, max(g, b)).toFloat()
+                      val minC = min(r, min(g, b)).toFloat()
+                      val sat = if (maxC > 0f) (maxC - minC) / maxC else 0f
+
+                      // Preferimos colores vivos y legibles como color de acento
+                      val score = sat * (1f - abs(lum - 0.6f))
+                      if (score > bestScore && lum > 0.22f) {
+                          bestScore = score
+                          // Aseguramos brillo suficiente para que destaque en pantalla
+                          val boostR = min(255, (r * 1.25f).roundToInt())
+                          val boostG = min(255, (g * 1.25f).roundToInt())
+                          val boostB = min(255, (b * 1.25f).roundToInt())
+                          bestColor = (0xFF shl 24) or (boostR shl 16) or (boostG shl 8) or boostB
+                      }
+                      y += stepY
+                  }
+                  x += stepX
+              }
+              val avgLum = if (count > 0) totalLum / count else 0.2f
+              val isDarkBg = avgLum < 0.62f
+              return Pair(bestColor, isDarkBg)
+          }
+
+          fun parseImportedThemes(savedSet: Set<String>): List<ImportedThemeItem> {
+              return savedSet.mapNotNull { entry ->
+                  val parts = entry.split("|")
+                  if (parts.size >= 6) {
+                      ImportedThemeItem(
+                          id = parts[0],
+                          title = parts[1],
+                          imagePath = parts[2],
+                          accentColorInt = parts[3].toIntOrNull() ?: 0xFFFFD700.toInt(),
+                          isDarkBg = parts[4].toBoolean(),
+                          clockStyle = parts[5].toIntOrNull() ?: 1
+                      )
+                  } else null
+              }.sortedByDescending { it.id }
+          }
+
+          fun serializeImportedThemes(list: List<ImportedThemeItem>): Set<String> {
+              return list.map {
+                  "${it.id}\vert{}${it.title}|${it.imagePath}\vert{}${it.accentColorInt}|${it.isDarkBg}\vert{}${it.clockStyle}"
+              }.toSet()
+          }
+
+          // Intenta cargar iconos reales desde un paquete de iconos externo instalado en el teléfono
+          fun loadIconFromExternalPack(
+              context: Context,
+              iconPackPkg: String,
+              targetPkg: String,
+              fallbackDrawable: Drawable
+          ): Bitmap {
+              if (iconPackPkg.isBlank()) return drawableToBitmap(fallbackDrawable)
+              try {
+                  val pm = context.packageManager
+                  val packRes = pm.getResourcesForApplication(iconPackPkg)
+                  val assetManager = packRes.assets
+                  var drawableName: String? = null
+
+                  val parserId = packRes.getIdentifier("appfilter", "xml", iconPackPkg)
+                  if (parserId != 0) {
+                      val parser = packRes.getXml(parserId)
+                      var eventType = parser.eventType
+                      while (eventType != XmlPullParser.END_DOCUMENT) {
+                          if (eventType == XmlPullParser.START_TAG && parser.name == "item") {
+                              val comp = parser.getAttributeValue(null, "component") ?: ""
+                              if (comp.contains(targetPkg, ignoreCase = true)) {
+                                  drawableName = parser.getAttributeValue(null, "drawable")
+                                  break
+                              }
+                          }
+                          eventType = parser.next()
+                      }
+                  }
+
+                  if (!drawableName.isNullOrBlank()) {
+                      val resId = packRes.getIdentifier(drawableName, "drawable", iconPackPkg)
+                      if (resId != 0) {
+                          val extDrawable = packRes.getDrawable(resId, null)
+                          if (extDrawable != null) return drawableToBitmap(extDrawable)
+                      }
+                  }
+              } catch (_: Exception) {}
+              return drawableToBitmap(fallbackDrawable)
+          }
+
+          fun expandStatusBar(context: Context) {
+              try {
+                  val service = context.getSystemService("statusbar")
+                  val statusbarManager = Class.forName("android.app.StatusBarManager")
+                  val expand = statusbarManager.getMethod("expandNotificationsPanel")
+                  expand.invoke(service)
+              } catch (_: Exception) {}
+          }
+
+          fun getBatteryPercentage(context: Context): Int {
+              return try {
+                  val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                  val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                  val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                  if (level >= 0 && scale > 0) (level * 100) / scale else 100
+              } catch (_: Exception) {
+                  100
+              }
+          }
+
+          @Composable
+          fun LinceIbericoLauncher() {
+              val context = LocalContext.current
+              val view = LocalView.current
+              val density = LocalDensity.current
+              val prefs = remember { context.getSharedPreferences("lince_iberico_v8_prefs", Context.MODE_PRIVATE) }
+
+              val isFirstRun = remember { prefs.getBoolean("first_run_v8", true) }
+              var currentScreen by remember {
+                  mutableStateOf(if (isFirstRun) "WELCOME" else "HOME")
+              }
+
+              var wallpaperStyle by remember {
+                  mutableStateOf(prefs.getString("wallpaper_style", "nilo_piramides") ?: "nilo_piramides")
+              }
+              var activeImagePath by remember {
+                  mutableStateOf(prefs.getString("active_image_path", "") ?: "")
+              }
+              var customWallpaperBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+              // Color de acento personalizado (extraído de temas importados o elegido por el usuario)
+              var customAccentInt by remember {
+                  mutableStateOf(prefs.getInt("custom_accent_int", 0))
+              }
+
+              // Paquete de iconos externo instalado en el móvil (si el usuario activó uno)
+              var externalIconPackPkg by remember {
+                  mutableStateOf(prefs.getString("external_icon_pack_pkg", "") ?: "")
+              }
+
+              // Lista de temas importados e incorporados por el usuario
+              var importedThemes by remember {
+                  val raw = prefs.getStringSet("imported_themes_v8", emptySet()) ?: emptySet()
+                  mutableStateOf(parseImportedThemes(raw))
+              }
+
+              var iconPackMode by remember {
+                  mutableStateOf(prefs.getString("icon_pack", "gold_pharaoh") ?: "gold_pharaoh")
+              }
+              var textColorMode by remember {
+                  mutableStateOf(prefs.getString("text_color_mode", "light") ?: "light")
+              }
+              var fontMode by remember {
+                  mutableStateOf(prefs.getString("font_mode", "serif") ?: "serif")
+              }
+              var clockStyle by remember {
+                  mutableStateOf(prefs.getInt("clock_style", 0))
+              }
+              var showCalendarDate by remember {
+                  mutableStateOf(prefs.getBoolean("show_date", true))
+              }
+              var showWeather by remember {
+                  mutableStateOf(prefs.getBoolean("show_weather", true))
+              }
+              var showBattery by remember {
+                  mutableStateOf(prefs.getBoolean("show_battery", true))
+              }
+              var linceClockStyle by remember {
+                  mutableStateOf(prefs.getInt("lince_clock_style", 4))
+              }
+              var hideAlphabet by remember {
+                  mutableStateOf(prefs.getBoolean("hide_alphabet", false))
+              }
+              var hideFavoriteNames by remember {
+                  mutableStateOf(prefs.getBoolean("hide_fav_names", false))
+              }
+              var showLinceButton by remember {
+                  mutableStateOf(prefs.getBoolean("show_lince_btn", true))
+              }
+              var waveOnLeft by remember {
+                  mutableStateOf(prefs.getBoolean("wave_left", false))
+              }
+              var iconSizeDp by remember {
+                  mutableStateOf(prefs.getFloat("icon_size", 44f))
+              }
+              var verticalOffsetDp by remember {
+                  mutableStateOf(prefs.getFloat("vertical_offset", 20f))
+              }
+              var isMovingWidgetMode by remember { mutableStateOf(false) }
+
+              var favoritePackages by remember {
+                  val saved = prefs.getStringSet("favorites", null)
+                  mutableStateOf(saved?.toSet() ?: emptySet<String>())
+              }
+
+              var apps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+              var externalThemeApps by remember { mutableStateOf<List<ExternalThemeApp>>(emptyList()) }
+
+              var searchQuery by remember { mutableStateOf("") }
+              var favSearchQuery by remember { mutableStateOf("") }
+              var isSearching by remember { mutableStateOf(false) }
+
+              var showLinceWidgetSheet by remember { mutableStateOf(false) }
+              var showLinceClockPicker by remember { mutableStateOf(false) }
+              var selectedAppForMenu by remember { mutableStateOf<AppItem?>(null) }
+
+              var activeChar by remember { mutableStateOf<Char>('★') }
+              var activeWaveIndex by remember { mutableStateOf<Int?>(null) }
+              var touchY by remember { mutableStateOf<Float?>(null) }
+              var containerSize by remember { mutableStateOf(IntSize(1080, 2400)) }
+
+              val listState = rememberLazyListState()
+
+              var currentTime by remember { mutableStateOf("") }
+              var currentDateShort by remember { mutableStateOf("") }
+              var currentDayName by remember { mutableStateOf("JUEVES") }
+              var currentDayNumber by remember { mutableStateOf("05") }
+              var batteryLevel by remember { mutableStateOf(100) }
+              var hourFloat by remember { mutableStateOf(10f) }
+              var minuteFloat by remember { mutableStateOf(10f) }
+
+              // Cargar imagen de tema importado si hay una activa
+              LaunchedEffect(activeImagePath, wallpaperStyle) {
+                  if (wallpaperStyle == "custom_gallery" && activeImagePath.isNotBlank()) {
+                      withContext(Dispatchers.IO) {
+                          val file = File(activeImagePath)
+                          if (file.exists()) {
+                              val bmp = BitmapFactory.decodeFile(file.absolutePath)
+                              withContext(Dispatchers.Main) {
+                                  customWallpaperBitmap = bmp
+                              }
+                          }
+                      }
+                  }
+              }
+
+              // IMPORTADOR MÁGICO DE TEMAS EN 1 TOQUE (Extrae colores, crea el tema y lo incorpora a la galería)
+              val smartThemeImporter = rememberLauncherForActivityResult(
+                  contract = ActivityResultContracts.GetContent()
+              ) { uri: Uri? ->
+                  if (uri != null) {
+                      try {
+                          val inputStream = context.contentResolver.openInputStream(uri)
+                          val bmp = BitmapFactory.decodeStream(inputStream)
+                          inputStream?.close()
+                          if (bmp != null) {
+                              val themeId = System.currentTimeMillis().toString()
+                              val outFile = File(context.filesDir, "imported_theme_$themeId.jpg")
+                              FileOutputStream(outFile).use { out ->
+                                  bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                              }
+
+                              val (extractedAccent, isDarkBg) = extractSmartPalette(bmp)
+                              val newNumber = importedThemes.size + 1
+                              val newTheme = ImportedThemeItem(
+                                  id = themeId,
+                                  title = "Tema Importado #$newNumber",
+                                  imagePath = outFile.absolutePath,
+                                  accentColorInt = extractedAccent,
+                                  isDarkBg = isDarkBg,
+                                  clockStyle = linceClockStyle.coerceAtLeast(1)
+                              )
+
+                              val updatedList = listOf(newTheme) + importedThemes
+                              importedThemes = updatedList
+                              prefs.edit()
+                                  .putStringSet("imported_themes_v8", serializeImportedThemes(updatedList))
+                                  .putString("wallpaper_style", "custom_gallery")
+                                  .putString("active_image_path", outFile.absolutePath)
+                                  .putInt("custom_accent_int", extractedAccent)
+                                  .putString("text_color_mode", if (isDarkBg) "light" else "dark")
+                                  .putString("icon_pack", "custom_accent")
+                                  .apply()
+
+                              customWallpaperBitmap = bmp
+                              activeImagePath = outFile.absolutePath
+                              wallpaperStyle = "custom_gallery"
+                              customAccentInt = extractedAccent
+                              textColorMode = if (isDarkBg) "light" else "dark"
+                              iconPackMode = "custom_accent"
+                              currentScreen = "HOME"
+                          }
+                      } catch (_: Exception) {}
+                  }
+              }
+
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      val now = Date()
+                      val cal = Calendar.getInstance()
+                      currentTime = DateFormat.format("HH:mm", now).toString()
+                      currentDateShort = DateFormat.format("EEE, d MMM", now).toString()
+                      currentDayName = DateFormat.format("EEEE", now).toString().uppercase()
+                      currentDayNumber = DateFormat.format("dd", now).toString()
+                      hourFloat = (cal.get(Calendar.HOUR) + cal.get(Calendar.MINUTE
