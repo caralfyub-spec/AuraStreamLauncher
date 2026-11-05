@@ -1,0 +1,1792 @@
+name: Compilar APK Directo
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Leer archivos
+        uses: actions/checkout@v4
+
+      - name: 2. Activar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 4. Construir Lince Launcher v10.0 con Importador de Temas
+        run: |
+          rm -rf app build .gradle local.properties settings.gradle* build.gradle* gradle.properties MainActivity.kt
+          mkdir -p app/src/main/java/com/atenea/pixelultralauncher
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+          sed -i 's/^[[:space:]]*//' gradle.properties
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "LinceIbericoLauncher"
+          include(":app")
+          EOF
+          sed -i 's/^          //' settings.gradle.kts
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          sed -i 's/^          //' build.gradle.kts
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.atenea.pixelultralauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.atenea.pixelultralauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 10
+                  versionName = "10.0-ImportadorUniversal"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          sed -i 's/^          //' app/build.gradle.kts
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="org.adw.launcher.THEMES" />
+                  </intent>
+                  <intent>
+                      <action android:name="com.novalauncher.THEME" />
+                  </intent>
+                  <intent>
+                      <action android:name="com.fede.launcher.THEME_ICONPACK" />
+                  </intent>
+              </queries>
+              <application
+                  android:label="Lince Ibérico"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          sed -i 's/^          //' app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+          package com.atenea.pixelultralauncher
+
+          import android.app.WallpaperManager
+          import android.content.ClipData
+          import android.content.ClipboardManager
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas as AndroidCanvas
+          import android.graphics.Color as AndroidColor
+          import android.graphics.drawable.BitmapDrawable
+          import android.graphics.drawable.Drawable
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.format.DateFormat
+          import android.view.HapticFeedbackConstants
+          import android.widget.Toast
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.horizontalScroll
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.geometry.Size
+          import androidx.compose.ui.graphics.*
+          import androidx.compose.ui.graphics.drawscope.DrawScope
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalView
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.IntSize
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.view.WindowCompat
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import java.io.File
+          import java.io.FileOutputStream
+          import java.util.Calendar
+          import java.util.Date
+          import kotlin.math.*
+
+          data class AppItem(val label: String, val packageName: String, val icon: Bitmap?, val initial: Char)
+          data class ExternalThemeApp(val name: String, val packageName: String, val icon: Bitmap?, val dominantColor: Color)
+          data class ThemePreset(
+              val id: String,
+              val title: String,
+              val subtitle: String,
+              val wallpaper: String,
+              val iconPack: String,
+              val textColor: String,
+              val clockType: Int,
+              val waveColor: String,
+              val hideAlphabet: Boolean,
+              val previewColor: Color
+          )
+
+          val ALL_THEME_PRESETS = listOf(
+              ThemePreset("lince_dia_claro", "🐾 Lince al Sol de Sierra Morena (Claro y Vivo)", "Cielo celeste luminoso • Lince ocre y blanco detallado • Barra Arcoíris", "lince_sol_claro", "black_essence", "dark", 1, "rainbow", false, Color(0xFFF59E0B)),
+              ThemePreset("lince_donana_claro", "🐾 Brisa Clara de Doñana (Arena y Turquesa)", "Fondo marisma turquesa y arena blanca • Lince iluminado • Barra Esmeralda", "lince_marisma_clara", "black_essence", "dark", 2, "emerald", false, Color(0xFF10B981)),
+              ThemePreset("lince_tarde_dorada", "🐾 Tarde Dorada en la Dehesa (Miel y Sol)", "Luz dorada cálida • Lince ibérico vivo • Barra Fuego Solar", "lince_miel_dorada", "white_minimal", "light", 1, "fire", false, Color(0xFFEA580C)),
+              ThemePreset("niagara_waves", "🌊 Niagara Olas Japonesas (Diseño 2 Vídeo)", "Mitad blanco marfil y olas azules • Iconos negros • Widget 15", "split_waves", "black_essence", "dark", 8, "ocean", false, Color(0xFF0284C7)),
+              ThemePreset("niagara_beach", "🌊 Niagara Costa Arena (Diseño 1 Vídeo)", "Orilla espumosa y negro • Iconos blancos • Reloj Analógico Blanco", "dark_beach", "white_minimal", "light", 7, "cyan", false, Color(0xFF38BDF8)),
+              ThemePreset("niagara_gold_intro", "🌊 Niagara Intro Cartel Dorado", "Fondo costa • Marco [ M A R T E S ] • Barra Oro", "dark_beach", "white_minimal", "light", 6, "gold", false, Color(0xFFD4AF37)),
+              ThemePreset("niagara_left_intro", "🌊 Niagara Intro Semana 05 (Móvil Izquierdo)", "Mitad blanco/olas • Widget 05 con barra de semana • Letras Azules", "split_waves", "black_essence", "dark", 3, "cyan", false, Color(0xFF0EA5E9)),
+              ThemePreset("niagara_purple", "🌊 Niagara Original Cristal Morado", "Degradado oficial Niagara • Iconos originales • Barra Rosa Neón", "purple_swirl", "default", "light", 9, "magenta", false, Color(0xFF8B5CF6)),
+              ThemePreset("niagara_emerald", "🌊 Niagara Bosque Esmeralda Claro", "Degradado verde menta y esmeralda • Iconos blancos • Barra Esmeralda", "emerald_mist", "white_minimal", "light", 9, "emerald", false, Color(0xFF10B981)),
+              ThemePreset("egipto_nilo", "☥ Sol en el Nilo y Pirámides (Egipto Claro)", "Pirámides doradas 3D y Río Nilo azul • Reloj Solar de Ra • Barra Oro", "nilo_piramides", "gold_pharaoh", "light", 4, "gold", false, Color(0xFFFFD700)),
+              ThemePreset("egipto_noche", "▲ Noche Faraónica en Luxor (Egipto)", "Cielo lapislázuli estrellado • Cartucho Real • Barra Cian", "noche_faraonica", "white_minimal", "light", 5, "cyan", false, Color(0xFF2563EB))
+          )
+
+          val RAINBOW_PALETTE = listOf(
+              Color(0xFFFF1744), Color(0xFFFF5252), Color(0xFFFF9100), Color(0xFFFFCA28),
+              Color(0xFFFFEA00), Color(0xFF76FF03), Color(0xFF00E676), Color(0xFF1DE9B6),
+              Color(0xFF00E5FF), Color(0xFF00B0FF), Color(0xFF2979FF), Color(0xFF651FFF),
+              Color(0xFFD500F9), Color(0xFFFF4081)
+          )
+
+          val FIRE_PALETTE = listOf(
+              Color(0xFFFFF59D), Color(0xFFFFEE58), Color(0xFFFFCA28), Color(0xFFFFB300),
+              Color(0xFFFF8F00), Color(0xFFF57C00), Color(0xFFE65100), Color(0xFFFF3D00), Color(0xFFDD2C00)
+          )
+
+          val OCEAN_PALETTE = listOf(
+              Color(0xFF84FFFF), Color(0xFF18FFFF), Color(0xFF00E5FF), Color(0xFF00B0FF),
+              Color(0xFF40C4FF), Color(0xFF0091EA), Color(0xFF2962FF), Color(0xFF1DE9B6)
+          )
+
+          val WAVE_COLOR_OPTIONS = listOf(
+              Triple("rainbow", "🌈 Arcoíris Multicolor (Cada letra un color)", Color(0xFF00E5FF)),
+              Triple("fire", "🔥 Degradado Fuego Solar (Amarillo a Rojo)", Color(0xFFFF9100)),
+              Triple("ocean", "🌊 Degradado Océano Turquesa (Cian a Azul)", Color(0xFF00B0FF)),
+              Triple("gold", "🟡 Oro Real Brillante", Color(0xFFFFD700)),
+              Triple("cyan", "🔵 Cian Neón Eléctrico", Color(0xFF00E5FF)),
+              Triple("emerald", "🟢 Verde Esmeralda Vivo", Color(0xFF00E676)),
+              Triple("lynx_amber", "🟠 Naranja Ámbar Lince", Color(0xFFFF6D00)),
+              Triple("magenta", "🟣 Rosa Neón / Fucsia", Color(0xFFFF4081)),
+              Triple("purple", "🟣 Violeta Brillante", Color(0xFFB388FF)),
+              Triple("red", "🔴 Rojo Coral Intenso", Color(0xFFFF1744)),
+              Triple("white", "⚪ Blanco Puro", Color(0xFFFFFFFF)),
+              Triple("black", "⚫ Negro Intenso (Para fondos claros)", Color(0xFF111827))
+          )
+
+          val LINCE_INDEX: List<Char> = listOf('★') + ('A'..'Z').toList() + listOf('#')
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  setContent { LinceIbericoLauncher() }
+              }
+          }
+
+          fun expandStatusBar(context: Context) {
+              try {
+                  val service = context.getSystemService("statusbar")
+                  Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(service)
+              } catch (_: Exception) {}
+          }
+
+          fun getBatteryPercentage(context: Context): Int {
+              return try {
+                  val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                  val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                  val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                  if (level >= 0 && scale > 0) (level * 100) / scale else 100
+              } catch (_: Exception) { 100 }
+          }
+
+          // Extrae automáticamente el color dominante y el brillo de cualquier imagen o icono externo
+          fun extractBitmapStyle(bmp: Bitmap): Pair<Color, Boolean> {
+              var rSum = 0L
+              var gSum = 0L
+              var bSum = 0L
+              var count = 0
+              val stepX = (bmp.width / 10).coerceAtLeast(1)
+              val stepY = (bmp.height / 10).coerceAtLeast(1)
+              for (x in 0 until bmp.width step stepX) {
+                  for (y in 0 until bmp.height step stepY) {
+                      val px = bmp.getPixel(x, y)
+                      if (AndroidColor.alpha(px) > 128) {
+                          rSum += AndroidColor.red(px)
+                          gSum += AndroidColor.green(px)
+                          bSum += AndroidColor.blue(px)
+                          count++
+                      }
+                  }
+              }
+              if (count == 0) return Color(0xFF00E5FF) to false
+              val r = (rSum / count).toInt()
+              val g = (gSum / count).toInt()
+              val b = (bSum / count).toInt()
+              val luminance = (0.299 * r + 0.587 * g + 0.114 * b)
+              return Color(r, g, b) to (luminance > 155)
+          }
+
+          fun closestWaveColorId(col: Color): String {
+              val r = col.red * 255f
+              val g = col.green * 255f
+              val b = col.blue * 255f
+              return when {
+                  r > 200 && g > 170 && b < 90 -> "gold"
+                  r > 200 && g > 90 && b < 90 -> "lynx_amber"
+                  r > 200 && b > 140 -> "magenta"
+                  r > 190 && g < 90 -> "red"
+                  g > 180 && b < 130 -> "emerald"
+                  b > 190 && g > 160 -> "cyan"
+                  b > 180 && r > 120 -> "purple"
+                  else -> "rainbow"
+              }
+          }
+
+          fun getWaveLetterColor(index: Int, mode: String, fallback: Color): Color {
+              return when (mode) {
+                  "rainbow" -> RAINBOW_PALETTE[index % RAINBOW_PALETTE.size]
+                  "fire" -> FIRE_PALETTE[index % FIRE_PALETTE.size]
+                  "ocean" -> OCEAN_PALETTE[index % OCEAN_PALETTE.size]
+                  "gold" -> Color(0xFFFFD700)
+                  "cyan" -> Color(0xFF00E5FF)
+                  "emerald" -> Color(0xFF00E676)
+                  "lynx_amber" -> Color(0xFFFF6D00)
+                  "magenta" -> Color(0xFFFF4081)
+                  "purple" -> Color(0xFFB388FF)
+                  "red" -> Color(0xFFFF1744)
+                  "white" -> Color.White
+                  "black" -> Color(0xFF111827)
+                  else -> fallback
+              }
+          }
+
+          @Composable
+          fun LinceIbericoLauncher() {
+              val context = LocalContext.current
+              val view = LocalView.current
+              val density = LocalDensity.current
+              val prefs = remember { context.getSharedPreferences("lince_v10_prefs", Context.MODE_PRIVATE) }
+
+              var currentScreen by remember { mutableStateOf(if (prefs.getBoolean("first_v10", true)) "WELCOME" else "HOME") }
+              var wallpaperStyle by remember { mutableStateOf(prefs.getString("wallpaper_style", "lince_sol_claro") ?: "lince_sol_claro") }
+              var customWallpaperBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+              // Lista de temas externos incorporados por el usuario
+              var importedThemesList by remember {
+                  val saved = prefs.getStringSet("imported_themes", emptySet()) ?: emptySet()
+                  mutableStateOf(saved.toList())
+              }
+              var externalThemeApps by remember { mutableStateOf<List<ExternalThemeApp>>(emptyList()) }
+              var importCodeInput by remember { mutableStateOf("") }
+
+              fun saveAndApplyImportedTheme(title: String, wall: String, icons: String, txt: String, clk: Int, wave: String) {
+                  val entry = "$title|$wall|$icons|$txt|$clk|$wave"
+                  val updated = (importedThemesList + entry).distinct()
+                  importedThemesList = updated
+                  prefs.edit().putStringSet("imported_themes", updated.toSet()).apply()
+
+                  wallpaperStyle = wall
+                  iconPackMode = icons
+                  textColorMode = txt
+                  clockType = clk
+                  waveColorMode = wave
+                  prefs.edit()
+                      .putString("wallpaper_style", wall)
+                      .putString("icon_pack", icons)
+                      .putString("text_color_mode", txt)
+                      .putInt("clock_type", clk)
+                      .putString("wave_color_mode", wave)
+                      .apply()
+              }
+
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val f = File(context.filesDir, "custom_lince_wallpaper.jpg")
+                      if (f.exists()) {
+                          val bmp = BitmapFactory.decodeFile(f.absolutePath)
+                          withContext(Dispatchers.Main) { customWallpaperBitmap = bmp }
+                      }
+                  }
+              }
+
+              // Selector para importar una imagen/captura de otra app y convertirla automáticamente en Tema completo
+              val smartThemeImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+                  if (uri != null) {
+                      try {
+                          context.contentResolver.openInputStream(uri)?.use { stream ->
+                              val bmp = BitmapFactory.decodeStream(stream)
+                              if (bmp != null) {
+                                  customWallpaperBitmap = bmp
+                                  FileOutputStream(File(context.filesDir, "custom_lince_wallpaper.jpg")).use { out ->
+                                      bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                                  }
+                                  val (domColor, isBright) = extractBitmapStyle(bmp)
+                                  val autoIcons = if (isBright) "black_essence" else "white_minimal"
+                                  val autoTxt = if (isBright) "dark" else "light"
+                                  val autoWave = closestWaveColorId(domColor)
+                                  val themeName = "Tema Incorporado #${importedThemesList.size + 1}"
+                                  saveAndApplyImportedTheme(themeName, "custom_gallery", autoIcons, autoTxt, 7, autoWave)
+                                  Toast.makeText(context, "¡$themeName creado e incorporado con éxito!", Toast.LENGTH_SHORT).show()
+                                  currentScreen = "HOME"
+                              }
+                          }
+                      } catch (_: Exception) {}
+                  }
+              }
+
+              var iconPackMode by remember { mutableStateOf(prefs.getString("icon_pack", "black_essence") ?: "black_essence") }
+              var textColorMode by remember { mutableStateOf(prefs.getString("text_color_mode", "dark") ?: "dark") }
+              var fontMode by remember { mutableStateOf(prefs.getString("font_mode", "sans") ?: "sans") }
+              var clockType by remember { mutableStateOf(prefs.getInt("clock_type", 1)) }
+              var waveColorMode by remember { mutableStateOf(prefs.getString("wave_color_mode", "rainbow") ?: "rainbow") }
+              var hideAlphabet by remember { mutableStateOf(prefs.getBoolean("hide_alphabet", false)) }
+              var hideFavoriteNames by remember { mutableStateOf(prefs.getBoolean("hide_fav_names", false)) }
+              var showLinceButton by remember { mutableStateOf(prefs.getBoolean("show_lince_btn", true)) }
+              var waveOnLeft by remember { mutableStateOf(prefs.getBoolean("wave_left", false)) }
+              var iconSizeDp by remember { mutableStateOf(prefs.getFloat("icon_size", 42f)) }
+              var verticalOffsetDp by remember { mutableStateOf(prefs.getFloat("vertical_offset", 14f)) }
+              var isMovingWidgetMode by remember { mutableStateOf(false) }
+
+              var favoritePackages by remember { mutableStateOf(prefs.getStringSet("favorites", null)?.toSet() ?: emptySet()) }
+              var apps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+              var searchQuery by remember { mutableStateOf("") }
+              var favSearchQuery by remember { mutableStateOf("") }
+              var isSearching by remember { mutableStateOf(false) }
+
+              var showQuickSheet by remember { mutableStateOf(false) }
+              var showClockPicker by remember { mutableStateOf(false) }
+              var showWaveColorPicker by remember { mutableStateOf(false) }
+              var selectedAppForMenu by remember { mutableStateOf<AppItem?>(null) }
+
+              var activeChar by remember { mutableStateOf('★') }
+              var activeWaveIndex by remember { mutableStateOf<Int?>(null) }
+              var touchY by remember { mutableStateOf<Float?>(null) }
+              var containerSize by remember { mutableStateOf(IntSize(1080, 2400)) }
+
+              val listState = rememberLazyListState()
+              var currentTime by remember { mutableStateOf("") }
+              var currentDateShort by remember { mutableStateOf("") }
+              var currentDayName by remember { mutableStateOf("JUEVES") }
+              var currentDayNumber by remember { mutableStateOf("05") }
+              var currentWeekNumber by remember { mutableStateOf(45) }
+              var batteryLevel by remember { mutableStateOf(100) }
+              var hourFloat by remember { mutableStateOf(10f) }
+              var minuteFloat by remember { mutableStateOf(10f) }
+
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      val now = Date()
+                      val cal = Calendar.getInstance()
+                      currentTime = DateFormat.format("HH:mm", now).toString()
+                      currentDateShort = DateFormat.format("EEE, d MMM", now).toString()
+                      currentDayName = DateFormat.format("EEEE", now).toString().uppercase()
+                      currentDayNumber = DateFormat.format("dd", now).toString()
+                      currentWeekNumber = cal.get(Calendar.WEEK_OF_YEAR)
+                      hourFloat = (cal.get(Calendar.HOUR) + cal.get(Calendar.MINUTE) / 60f)
+                      minuteFloat = cal.get(Calendar.MINUTE).toFloat()
+                      batteryLevel = getBatteryPercentage(context)
+                      delay(1000L)
+                  }
+              }
+
+              // Carga de aplicaciones + Escaneo automático de Paquetes de Iconos y Temas de otras apps instaladas
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val pm = context.packageManager
+                      val mainIntent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+                      val loadedApps = pm.queryIntentActivities(mainIntent, 0).mapNotNull { ri ->
+                          val pkg = ri.activityInfo.packageName
+                          if (pkg == context.packageName) return@mapNotNull null
+                          val label = ri.loadLabel(pm)?.toString()?.trim() ?: pkg
+                          val firstChar = if (label.isNotEmpty()) label[0].uppercaseChar() else '#'
+                          val initial = if (firstChar in 'A'..'Z') firstChar else '#'
+                          AppItem(label, pkg, drawableToBitmap(ri.loadIcon(pm)), initial)
+                      }.sortedBy { it.label.lowercase() }
+
+                      // Buscar apps de temas e icon packs compatibles (Nova, ADW, Smart, Lawnchair...)
+                      val themeActions = listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME", "com.fede.launcher.THEME_ICONPACK")
+                      val detectedPacks = mutableMapOf<String, ExternalThemeApp>()
+                      themeActions.forEach { act ->
+                          pm.queryIntentActivities(Intent(act), 0).forEach { ri ->
+                              val pkg = ri.activityInfo.packageName
+                              if (pkg !in detectedPacks) {
+                                  val bmp = drawableToBitmap(ri.loadIcon(pm))
+                                  val (domCol, _) = extractBitmapStyle(bmp)
+                                  detectedPacks[pkg] = ExternalThemeApp(ri.loadLabel(pm).toString(), pkg, bmp, domCol)
+                              }
+                          }
+                      }
+                      // También detectar apps instaladas cuyos nombres incluyan Icon, Theme, Wallpaper o KWGT
+                      loadedApps.forEach { app ->
+                          if (app.label.contains("icon", true) || app.label.contains("theme", true) || app.label.contains("tema", true) || app.label.contains("kwgt", true) || app.label.contains("wall", true)) {
+                              if (app.packageName !in detectedPacks && app.icon != null) {
+                                  val (domCol, _) = extractBitmapStyle(app.icon)
+                                  detectedPacks[app.packageName] = ExternalThemeApp(app.label, app.packageName, app.icon, domCol)
+                              }
+                          }
+                      }
+
+                      withContext(Dispatchers.Main) {
+                          apps = loadedApps
+                          externalThemeApps = detectedPacks.values.toList()
+                          if (favoritePackages.isEmpty() && loadedApps.isNotEmpty()) {
+                              val defaultFavs = loadedApps.take(6).map { it.packageName }.toSet()
+                              favoritePackages = defaultFavs
+                              prefs.edit().putStringSet("favorites", defaultFavs).apply()
+                          }
+                      }
+                  }
+              }
+
+              val appFontFamily = remember(fontMode) {
+                  when (fontMode) {
+                      "serif" -> FontFamily.Serif
+                      "mono" -> FontFamily.Monospace
+                      else -> FontFamily.SansSerif
+                  }
+              }
+
+              val isLightBackground = wallpaperStyle == "lince_sol_claro" || wallpaperStyle == "lince_marisma_clara" || wallpaperStyle == "split_waves"
+              val isDarkText = textColorMode == "dark" || isLightBackground
+              val primaryTextColor = if (isDarkText) Color(0xFF111827) else Color(0xFFFFFFFF)
+              val accentColor = getWaveLetterColor(4, waveColorMode, Color(0xFFFF9100))
+              val dialogBgColor = Color(0xFF1E293B)
+
+              // =========================================================================
+              // PANTALLA NUEVA: IMPORTADOR SIMPLE DE TEMAS DE OTRAS APLICACIONES
+              // =========================================================================
+              if (currentScreen == "IMPORT_THEMES") {
+                  Column(
+                      modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(14.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "HOME" }) { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White) }
+                          Text("📥 Importar e Incorporar Temas", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Text(
+                          text = "Incorpora temas de otras aplicaciones en 1 solo toque:",
+                          color = Color.White.copy(alpha = 0.8f),
+                          fontSize = 13.sp
+                      )
+
+                      // OPCIÓN 1: CREAR E INCORPORAR TEMA AUTOMÁTICO DESDE IMAGEN / CAPTURA DE OTRA APP
+                      Column(
+                          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xFF1E293B)).border(1.5.dp, Color(0xFF00E5FF), RoundedCornerShape(18.dp)).padding(16.dp)
+                      ) {
+                          Text("1. Crear Tema desde Imagen o Captura de otra App", color = Color(0xFF00E5FF), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                          Spacer(modifier = Modifier.height(4.dp))
+                          Text("Elige cualquier fondo o captura de otra aplicación: el launcher extrae sus colores automáticamente y lo incorpora a tu lista de temas.", color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+                          Spacer(modifier = Modifier.height(10.dp))
+                          Button(
+                              onClick = { smartThemeImageLauncher.launch("image/*") },
+                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
+                              shape = RoundedCornerShape(14.dp),
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Text("📂  Elegir Imagen y Autoconfigurar Tema", color = Color.Black, fontWeight = FontWeight.Bold)
+                          }
+                      }
+
+                      // OPCIÓN 2: SINCRONIZAR CON EL FONDO DEL SISTEMA (WALLI, BACKDROPS, ZEDGE, PIXEL...)
+                      Column(
+                          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xFF1E293B)).border(1.5.dp, Color(0xFF34D399), RoundedCornerShape(18.dp)).padding(16.dp)
+                      ) {
+                          Text("2. Sincronizar con App de Fondos / Sistema Android", color = Color(0xFF34D399), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                          Spacer(modifier = Modifier.height(4.dp))
+                          Text("Si aplicaste un tema o fondo desde Walli, Backdrops, Zedge o los ajustes de tu Pixel, pulsa aquí para absorberlo en el launcher.", color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+                          Spacer(modifier = Modifier.height(10.dp))
+                          Button(
+                              onClick = {
+                                  try {
+                                      val wm = WallpaperManager.getInstance(context)
+                                      val drawable = wm.drawable
+                                      if (drawable != null) {
+                                          val bmp = drawableToBitmap(drawable)
+                                          customWallpaperBitmap = bmp
+                                          FileOutputStream(File(context.filesDir, "custom_lince_wallpaper.jpg")).use { out ->
+                                              bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                                          }
+                                          val (domCol, isBright) = extractBitmapStyle(bmp)
+                                          saveAndApplyImportedTheme(
+                                              "Tema del Sistema Android",
+                                              "custom_gallery",
+                                              if (isBright) "black_essence" else "white_minimal",
+                                              if (isBright) "dark" else "light",
+                                              7,
+                                              closestWaveColorId(domCol)
+                                          )
+                                          Toast.makeText(context, "¡Tema del sistema absorbido e incorporado!", Toast.LENGTH_SHORT).show()
+                                          currentScreen = "HOME"
+                                      }
+                                  } catch (_: Exception) {
+                                      // Si Android restringe lectura directa, abrimos el selector rápido de imagen
+                                      smartThemeImageLauncher.launch("image/*")
+                                  }
+                              },
+                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34D399)),
+                              shape = RoundedCornerShape(14.dp),
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Text("🔄  Absorber Tema / Fondo actual del Sistema", color = Color.Black, fontWeight = FontWeight.Bold)
+                          }
+                      }
+
+                      // OPCIÓN 3: PAQUETES DE ICONOS Y APPS DE TEMAS DETECTADOS EN EL TELÉFONO
+                      Column(
+                          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xFF1E293B)).border(1.5.dp, Color(0xFFFFD700), RoundedCornerShape(18.dp)).padding(16.dp)
+                      ) {
+                          Text("3. Apps de Temas e Icon Packs en tu Pixel", color = Color(0xFFFFD700), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                          Spacer(modifier = Modifier.height(4.dp))
+                          if (externalThemeApps.isEmpty()) {
+                              Text("No se han detectado paquetes externos adicionales todavía. Puedes usar cualquier pack de Play Store (Nova/ADW/KWGT) y aparecerá aquí automáticamente.", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                          } else {
+                              Text("Toca cualquier app de temas detectada para incorporar su estilo:", color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+                              Spacer(modifier = Modifier.height(8.dp))
+                              externalThemeApps.forEach { ext ->
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F172A)).border(1.dp, ext.dominantColor, RoundedCornerShape(12.dp))
+                                          .clickable {
+                                              val waveId = closestWaveColorId(ext.dominantColor)
+                                              saveAndApplyImportedTheme(
+                                                  "Pack: ${ext.name}",
+                                                  wallpaperStyle,
+                                                  "white_minimal",
+                                                  textColorMode,
+                                                  clockType,
+                                                  waveId
+                                              )
+                                              Toast.makeText(context, "Estilo de ${ext.name} incorporado", Toast.LENGTH_SHORT).show()
+                                              currentScreen = "HOME"
+                                          }.padding(10.dp),
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      if (ext.icon != null) {
+                                          Image(bitmap = ext.icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)))
+                                      }
+                                      Spacer(modifier = Modifier.width(12.dp))
+                                      Column(modifier = Modifier.weight(1f)) {
+                                          Text(ext.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                          Text("Toca para incorporar sus colores e iconos", color = Color(0xFFFFD700), fontSize = 11.sp)
+                                      }
+                                      TextButton(onClick = { launchApp(context, ext.packageName) }) {
+                                          Text("Abrir App", color = Color(0xFF38BDF8), fontSize = 11.sp)
+                                      }
+                                  }
+                              }
+                          }
+                      }
+
+                      // OPCIÓN 4: IMPORTAR O COMPARTIR TEMA POR CÓDIGO CORTO (PORTAPAPELES)
+                      Column(
+                          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xFF1E293B)).border(1.5.dp, Color(0xFFA855F7), RoundedCornerShape(18.dp)).padding(16.dp)
+                      ) {
+                          Text("4. Importar o Guardar por Código Rápido", color = Color(0xFFA855F7), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                          Spacer(modifier = Modifier.height(6.dp))
+                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              Button(
+                                  onClick = {
+                                      val currentCode = "Tema Guardado|${wallpaperStyle}|${iconPackMode}|${textColorMode}|${clockType}|${waveColorMode}"
+                                      val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                      cm.setPrimaryClip(ClipData.newPlainText("lince_theme", currentCode))
+                                      saveAndApplyImportedTheme("Mi Tema Personal #${importedThemesList.size + 1}", wallpaperStyle, iconPackMode, textColorMode, clockType, waveColorMode)
+                                      Toast.makeText(context, "¡Tema actual guardado en Mis Temas y copiado!", Toast.LENGTH_SHORT).show()
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFA855F7)),
+                                  modifier = Modifier.weight(1f)
+                              ) {
+                                  Text("💾 Guardar Actual", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                              }
+                              Button(
+                                  onClick = {
+                                      val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                      val txt = cm.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
+                                      val parts = txt.split("|")
+                                      if (parts.size >= 6) {
+                                          saveAndApplyImportedTheme(parts[0], parts[1], parts[2], parts[3], parts[4].toIntOrNull() ?: 1, parts[5])
+                                          Toast.makeText(context, "¡Tema pegado e incorporado!", Toast.LENGTH_SHORT).show()
+                                          currentScreen = "HOME"
+                                      } else {
+                                          Toast.makeText(context, "Primero copia un código de tema válido", Toast.LENGTH_SHORT).show()
+                                      }
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8)),
+                                  modifier = Modifier.weight(1f)
+                              ) {
+                                  Text("📋 Pegar Tema", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                              }
+                          }
+                      }
+
+                      // LISTA DE TEMAS YA INCORPORADOS POR EL USUARIO
+                      if (importedThemesList.isNotEmpty()) {
+                          Text("Mis Temas Incorporados (${importedThemesList.size}):", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                          importedThemesList.forEach { raw ->
+                              val p = raw.split("|")
+                              if (p.size >= 6) {
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF1E293B)).border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(14.dp))
+                                          .clickable {
+                                              wallpaperStyle = p[1]; iconPackMode = p[2]; textColorMode = p[3]; clockType = p[4].toIntOrNull() ?: 1; waveColorMode = p[5]
+                                              prefs.edit().putString("wallpaper_style", wallpaperStyle).putString("icon_pack", iconPackMode).putString("text_color_mode", textColorMode).putInt("clock_type", clockType).putString("wave_color_mode", waveColorMode).apply()
+                                              currentScreen = "HOME"
+                                          }.padding(14.dp),
+                                      horizontalArrangement = Arrangement.SpaceBetween,
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Column(modifier = Modifier.weight(1f)) {
+                                          Text("⭐ ${p[0]}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                          Text("Iconos: ${p[2]} • Letras: ${p[5]}", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                                      }
+                                      IconButton(onClick = {
+                                          val up = importedThemesList - raw
+                                          importedThemesList = up
+                                          prefs.edit().putStringSet("imported_themes", up.toSet()).apply()
+                                      }) {
+                                          Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFFF5252))
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                  return
+              }
+
+              if (currentScreen == "WELCOME") {
+                  Box(
+                      modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7), Color(0xFF0369A1)))).statusBarsPadding().navigationBarsPadding().padding(28.dp)
+                  ) {
+                      Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                          Spacer(modifier = Modifier.height(20.dp))
+                          Column {
+                              Text("Lince Ibérico, Niagara & Egipto", color = Color(0xFFFFEA00), fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+                              Spacer(modifier = Modifier.height(14.dp))
+                              Text("Incluye temas claros del Lince Ibérico, diseños de Niagara Launcher, barra multicolor e Importador Universal de Temas de otras aplicaciones.", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                          }
+                          Button(
+                              onClick = { currentScreen = "FAVORITES" },
+                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFEA00)),
+                              shape = RoundedCornerShape(28.dp),
+                              modifier = Modifier.fillMaxWidth().height(56.dp)
+                          ) {
+                              Text("Elegir aplicaciones favoritas  🐾 🌈", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                          }
+                      }
+                  }
+                  return
+              }
+
+              if (currentScreen == "FAVORITES") {
+                  val filtered = remember(apps, favSearchQuery) {
+                      if (favSearchQuery.isBlank()) apps else apps.filter { it.label.contains(favSearchQuery.trim(), ignoreCase = true) }
+                  }
+                  Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).statusBarsPadding().navigationBarsPadding()) {
+                      Column(modifier = Modifier.fillMaxWidth().background(Color(0xFF1E293B)).padding(18.dp)) {
+                          Text("Tus Favoritos (${favoritePackages.size} marcadas)", color = Color(0xFF38BDF8), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                          Spacer(modifier = Modifier.height(10.dp))
+                          Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.14f)).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                              Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                              Spacer(modifier = Modifier.width(8.dp))
+                              BasicTextField(
+                                  value = favSearchQuery,
+                                  onValueChange = { favSearchQuery = it },
+                                  singleLine = true,
+                                  textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                                  cursorBrush = SolidColor(Color.White),
+                                  modifier = Modifier.weight(1f),
+                                  decorationBox = { inner -> if (favSearchQuery.isEmpty()) Text("Buscar app...", color = Color.White.copy(alpha = 0.6f)); inner() }
+                              )
+                          }
+                      }
+                      LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                          items(filtered, key = { "fav_${it.packageName}" }) { app ->
+                              val isChecked = app.packageName in favoritePackages
+                              Row(
+                                  modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (isChecked) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                                      .clickable {
+                                          val up = favoritePackages.toMutableSet()
+                                          if (isChecked) up.remove(app.packageName) else up.add(app.packageName)
+                                          favoritePackages = up
+                                          prefs.edit().putStringSet("favorites", up).apply()
+                                      }.padding(10.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Checkbox(checked = isChecked, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF38BDF8), checkmarkColor = Color.Black))
+                                  Spacer(modifier = Modifier.width(12.dp))
+                                  if (app.icon != null) Image(bitmap = app.icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)))
+                                  Spacer(modifier = Modifier.width(12.dp))
+                                  Text(app.label, color = Color.White, fontSize = 16.sp)
+                              }
+                          }
+                      }
+                      Button(
+                          onClick = { prefs.edit().putBoolean("first_v10", false).apply(); currentScreen = "HOME" },
+                          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8)),
+                          shape = RoundedCornerShape(28.dp),
+                          modifier = Modifier.fillMaxWidth().padding(16.dp).height(54.dp)
+                      ) {
+                          Text("Guardar e ir al Inicio", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                      }
+                  }
+                  return
+              }
+
+              if (currentScreen == "SETTINGS") {
+                  Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "HOME" }) { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White) }
+                          Text("Configuración Completa", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                      }
+                      SettingsCardItem("📥  Importar e Incorporar Temas de otras Apps", "Detecta Icon Packs instalados, absorbe temas del sistema o desde imágenes", Color(0xFF00E5FF)) { currentScreen = "IMPORT_THEMES" }
+                      SettingsCardItem("🌈  Color de la Barra de Letras (Arcoíris, Fuego, Océano...)", "Elige entre 12 colores y degradados para las letras A-Z y la burbuja", Color(0xFF38BDF8)) { currentScreen = "HOME"; showWaveColorPicker = true }
+                      SettingsCardItem("✨  Temas (Lince Luminoso, Niagara Launcher y Egipto)", "Todos los temas oficiales + Tus temas incorporados", Color(0xFFFFD700)) { currentScreen = "THEMES" }
+                      SettingsCardItem("🖼  Fondos de Pantalla y Mi Galería", "Fondos soleados del Lince, Niagara, Pirámides o sube tu propia foto", Color(0xFF34D399)) { currentScreen = "WALLPAPERS" }
+                      SettingsCardItem("🕒  Catálogo de Relojes (Lince Claro, KWGT Niagara y Egipto)", "9 relojes exclusivos: Orejas de Lince, KWGT Blanco, Semana 05, Sol de Ra...", Color(0xFF60A5FA)) { currentScreen = "HOME"; showClockPicker = true }
+                      SettingsCardItem("★  Editar aplicaciones favoritas (${favoritePackages.size} apps)", "Marca con casillas las aplicaciones de tu pantalla principal", Color(0xFFF59E0B)) { currentScreen = "FAVORITES" }
+                      SettingsCardItem("🎨  Apariencia (Iconos, Tamaño, Color de Texto)", "Paquetes de iconos, tamaño, tipografía y ocultar alfabeto", Color(0xFFA855F7)) { currentScreen = "APPEARANCE" }
+                      SettingsCardItem(if (waveOnLeft) "🌊  Posición de la Barra de Letras: Izquierda" else "🌊  Posición de la Barra de Letras: Derecha", "Toca para cambiar de lado la barra alfabética", Color.White) {
+                          waveOnLeft = !waveOnLeft; prefs.edit().putBoolean("wave_left", waveOnLeft).apply()
+                      }
+                      SettingsCardItem("🏠  Establecer como Launcher Predeterminado", "Fijar como pantalla de inicio principal en tu Pixel", Color(0xFFF43F5E)) {
+                          context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                      }
+                  }
+                  return
+              }
+
+              if (currentScreen == "THEMES") {
+                  Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "SETTINGS" }) { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White) }
+                          Text("Galería de Temas", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Button(
+                          onClick = { currentScreen = "IMPORT_THEMES" },
+                          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
+                          shape = RoundedCornerShape(16.dp),
+                          modifier = Modifier.fillMaxWidth().height(50.dp)
+                      ) {
+                          Text("📥  Importar Tema de otra Aplicación / Imagen", color = Color.Black, fontWeight = FontWeight.ExtraBold)
+                      }
+
+                      if (importedThemesList.isNotEmpty()) {
+                          Text("Mis Temas Incorporados:", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                          importedThemesList.forEach { raw ->
+                              val p = raw.split("|")
+                              if (p.size >= 6) {
+                                  Row(
+                                      modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF1E293B)).border(1.5.dp, Color(0xFF00E5FF), RoundedCornerShape(16.dp))
+                                          .clickable {
+                                              wallpaperStyle = p[1]; iconPackMode = p[2]; textColorMode = p[3]; clockType = p[4].toIntOrNull() ?: 1; waveColorMode = p[5]
+                                              prefs.edit().putString("wallpaper_style", wallpaperStyle).putString("icon_pack", iconPackMode).putString("text_color_mode", textColorMode).putInt("clock_type", clockType).putString("wave_color_mode", waveColorMode).apply()
+                                              currentScreen = "HOME"
+                                          }.padding(14.dp),
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Text("⭐ ${p[0]}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                      Text("Aplicar", color = Color(0xFF00E5FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                  }
+                              }
+                          }
+                      }
+
+                      Text("Temas Oficiales (Lince Claro, Niagara y Egipto):", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                      ALL_THEME_PRESETS.forEach { p ->
+                          Row(
+                              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xFF1E293B)).border(1.5.dp, p.previewColor, RoundedCornerShape(18.dp))
+                                  .clickable {
+                                      wallpaperStyle = p.wallpaper; iconPackMode = p.iconPack; textColorMode = p.textColor; clockType = p.clockType; waveColorMode = p.waveColor; hideAlphabet = p.hideAlphabet
+                                      prefs.edit()
+                                          .putString("wallpaper_style", wallpaperStyle)
+                                          .putString("icon_pack", iconPackMode)
+                                          .putString("text_color_mode", textColorMode)
+                                          .putInt("clock_type", clockType)
+                                          .putString("wave_color_mode", waveColorMode)
+                                          .putBoolean("hide_alphabet", hideAlphabet)
+                                          .apply()
+                                      currentScreen = "HOME"
+                                  }.padding(14.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Box(modifier = Modifier.size(42.dp).clip(CircleShape).background(p.previewColor).border(2.dp, Color.White, CircleShape))
+                              Spacer(modifier = Modifier.width(14.dp))
+                              Column {
+                                  Text(p.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                  Text(p.subtitle, color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+                              }
+                          }
+                      }
+                  }
+                  return
+              }
+
+              if (currentScreen == "WALLPAPERS") {
+                  Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "SETTINGS" }) { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White) }
+                          Text("Fondos de Pantalla", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                      }
+                      Button(onClick = { smartThemeImageLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8)), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                          Text("📂  Importar Fondo y Autoconfigurar Tema", color = Color.Black, fontWeight = FontWeight.Bold)
+                      }
+                      listOf(
+                          "lince_sol_claro" to "🐾 Lince al Sol de Sierra Morena (Claro, Celeste y Vivo)",
+                          "lince_marisma_clara" to "🐾 Brisa Clara de Doñana (Turquesa, Arena Clara y Lince)",
+                          "lince_miel_dorada" to "🐾 Tarde Dorada en la Dehesa (Miel y Ámbar Cálido)",
+                          "split_waves" to "🌊 Niagara Mitad Blanco / Olas Azules Japonesas",
+                          "dark_beach" to "🌊 Niagara Costa Arena con Espuma Blanca",
+                          "purple_swirl" to "🌊 Niagara Original Cristal Morado Luminoso",
+                          "emerald_mist" to "🌊 Niagara Bosque Esmeralda Claro",
+                          "nilo_piramides" to "▲ El Nilo y las Pirámides de Giza (Egipto Soleado)",
+                          "noche_faraonica" to "☥ Noche Faraónica en el Nilo (Lapislázuli y Oro)"
+                      ).forEach { (id, name) ->
+                          Box(
+                              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (wallpaperStyle == id) Color(0xFF334155) else Color(0xFF1E293B)).border(1.dp, Color(0xFF38BDF8), RoundedCornerShape(14.dp))
+                                  .clickable {
+                                      wallpaperStyle = id
+                                      textColorMode = if (id == "lince_sol_claro" || id == "lince_marisma_clara" || id == "split_waves") "dark" else "light"
+                                      prefs.edit().putString("wallpaper_style", id).putString("text_color_mode", textColorMode).apply()
+                                      currentScreen = "HOME"
+                                  }.padding(14.dp)
+                          ) {
+                              Text(name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                          }
+                      }
+                  }
+                  return
+              }
+
+              if (currentScreen == "APPEARANCE") {
+                  Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A)).statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "SETTINGS" }) { Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White) }
+                          Text("Apariencia y Colores", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                      }
+                      Text("Color de la Barra de Letras:", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
+                      WAVE_COLOR_OPTIONS.forEach { (id, label, col) ->
+                          Row(
+                              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (waveColorMode == id) Color(0xFF334155) else Color(0xFF1E293B)).border(1.5.dp, col, RoundedCornerShape(12.dp))
+                                  .clickable { waveColorMode = id; prefs.edit().putString("wave_color_mode", id).apply() }.padding(10.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Box(modifier = Modifier.size(20.dp).clip(CircleShape).background(col))
+                              Spacer(modifier = Modifier.width(10.dp))
+                              Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                          }
+                      }
+                      Text("Paquete de iconos:", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
+                      listOf(
+                          "black_essence" to "⚫ Pure Essence Black (Ideal para fondos claros)",
+                          "white_minimal" to "⚪ Simply Minimal White (Blancos luminosos)",
+                          "gold_pharaoh" to "🟡 Oro Real Faraónico",
+                          "neon_cyan" to "🟠 Contorno Ámbar Lince",
+                          "default" to "🎨 Iconos originales a todo color"
+                      ).forEach { (id, title) ->
+                          Box(
+                              modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (iconPackMode == id) Color(0xFF0284C7) else Color(0xFF1E293B))
+                                  .clickable { iconPackMode = id; prefs.edit().putString("icon_pack", id).apply() }.padding(12.dp)
+                          ) {
+                              Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                          }
+                      }
+                      Button(onClick = { currentScreen = "HOME" }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8)), modifier = Modifier.fillMaxWidth()) {
+                          Text("Aplicar y volver al Inicio", color = Color.Black, fontWeight = FontWeight.Bold)
+                      }
+                  }
+                  return
+              }
+
+              val favoriteApps = remember(apps, favoritePackages) { favoritePackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } } }
+              val displayedApps = remember(apps, favoriteApps, searchQuery, isSearching, activeChar) {
+                  when {
+                      isSearching && searchQuery.isNotBlank() -> apps.filter { it.label.contains(searchQuery.trim(), ignoreCase = true) }
+                      isSearching -> apps
+                      activeChar == '★' -> favoriteApps
+                      else -> apps.filter { it.initial == activeChar }.ifEmpty { apps }
+                  }
+              }
+
+              val w = containerSize.width.toFloat().coerceAtLeast(1f)
+              val h = containerSize.height.toFloat().coerceAtLeast(1f)
+              val topWaveY = h * 0.16f
+              val bottomWaveY = h * 0.86f
+
+              val wavePoints = remember(containerSize, touchY, waveOnLeft) {
+                  val safeTotal = (LINCE_INDEX.size - 1).coerceAtLeast(1)
+                  val maxShift = with(density) { 68.dp.toPx() }
+                  val rad = with(density) { 120.dp.toPx() }
+                  LINCE_INDEX.indices.map { i ->
+                      val t = i.toFloat() / safeTotal.toFloat()
+                      val baseY = topWaveY + t * (bottomWaveY - topWaveY)
+                      val baseX = if (waveOnLeft) with(density) { 24.dp.toPx() } else w - with(density) { 24.dp.toPx() }
+                      val shift = touchY?.let { ty ->
+                          val d = abs(baseY - ty)
+                          if (d < rad) ((1f + cos((d / rad) * PI.toFloat())) / 2f) * maxShift else 0f
+                      } ?: 0f
+                      Offset(if (waveOnLeft) baseX + shift else baseX - shift, baseY)
+                  }
+              }
+
+              fun handleWaveTouch(yPos: Float) {
+                  touchY = yPos
+                  val clampedY = yPos.coerceIn(topWaveY, bottomWaveY)
+                  val idx = (((clampedY - topWaveY) / (bottomWaveY - topWaveY).coerceAtLeast(1f)) * (LINCE_INDEX.size - 1)).roundToInt().coerceIn(0, LINCE_INDEX.size - 1)
+                  if (activeWaveIndex != idx) {
+                      activeWaveIndex = idx
+                      activeChar = LINCE_INDEX[idx]
+                      isSearching = false
+                      searchQuery = ""
+                      view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                  }
+              }
+
+              Box(
+                  modifier = Modifier.fillMaxSize().onSizeChanged { containerSize = it }
+                      .pointerInput(Unit) {
+                          detectTapGestures(
+                              onLongPress = { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); showQuickSheet = true },
+                              onTap = { if (isMovingWidgetMode) isMovingWidgetMode = false }
+                          )
+                      }
+                      .pointerInput(Unit) {
+                          var dy = 0f
+                          detectVerticalDragGestures(
+                              onDragStart = { dy = 0f },
+                              onVerticalDrag = { _, d -> dy += d },
+                              onDragEnd = {
+                                  if (dy < -90f && !isSearching) isSearching = true
+                                  else if (dy > 90f && !isSearching) expandStatusBar(context)
+                              }
+                          )
+                      }
+              ) {
+                  // 1. FONDOS DE PANTALLA
+                  if (wallpaperStyle == "custom_gallery" && customWallpaperBitmap != null) {
+                      Image(bitmap = customWallpaperBitmap!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                  } else {
+                      Canvas(modifier = Modifier.fillMaxSize()) {
+                          val cw = size.width
+                          val ch = size.height
+                          when (wallpaperStyle) {
+                              "lince_sol_claro" -> drawBrightLinceWallpaper(this, cw, ch, style = 1)
+                              "lince_marisma_clara" -> drawBrightLinceWallpaper(this, cw, ch, style = 2)
+                              "lince_miel_dorada" -> drawBrightLinceWallpaper(this, cw, ch, style = 3)
+                              "split_waves" -> drawNiagaraSplitWaves(this, cw, ch)
+                              "dark_beach" -> drawNiagaraDarkBeach(this, cw, ch)
+                              "purple_swirl" -> {
+                                  drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9), Color(0xFF2E1065))))
+                                  drawCircle(Color(0xFFDDD6FE).copy(alpha = 0.3f), radius = cw * 0.6f, center = Offset(cw * 0.65f, ch * 0.42f))
+                              }
+                              "emerald_mist" -> {
+                                  drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF34D399), Color(0xFF059669), Color(0xFF065F46))))
+                                  drawCircle(Color(0xFFD1FAE5).copy(alpha = 0.3f), radius = cw * 0.55f, center = Offset(cw * 0.7f, ch * 0.35f))
+                              }
+                              "nilo_piramides" -> drawEgyptianNileWallpaper(this, cw, ch, false)
+                              "noche_faraonica" -> drawEgyptianNileWallpaper(this, cw, ch, true)
+                              else -> drawBrightLinceWallpaper(this, cw, ch, style = 1)
+                          }
+
+                          if (wavePoints.size > 1 && (!hideAlphabet || touchY != null)) {
+                              for (i in 1 until wavePoints.size) {
+                                  val segColor = getWaveLetterColor(i, waveColorMode, accentColor)
+                                  drawLine(
+                                      color = segColor.copy(alpha = if (touchY != null) 0.85f else 0.45f),
+                                      start = wavePoints[i - 1],
+                                      end = wavePoints[i],
+                                      strokeWidth = if (touchY != null) 4.5.dp.toPx() else 2.5.dp.toPx(),
+                                      cap = StrokeCap.Round
+                                  )
+                              }
+                          }
+                      }
+                  }
+
+                  // 2. CONTENIDO CENTRAL
+                  Column(
+                      modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                          .padding(start = if (waveOnLeft) 62.dp else 24.dp, end = if (waveOnLeft) 24.dp else 58.dp, top = 10.dp, bottom = 10.dp)
+                  ) {
+                      if (isMovingWidgetMode) {
+                          Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xEE18191C)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                              Slider(value = verticalOffsetDp, onValueChange = { verticalOffsetDp = it; prefs.edit().putFloat("vertical_offset", it).apply() }, valueRange = 0f..180f, modifier = Modifier.weight(1f))
+                              TextButton(onClick = { isMovingWidgetMode = false }) { Text("Hecho", color = Color(0xFF38BDF8)) }
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(verticalOffsetDp.dp))
+
+                      if (!isSearching && activeChar == '★') {
+                          Box(
+                              modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                                  .pointerInput(Unit) { detectTapGestures(onTap = { showClockPicker = true }, onLongPress = { showQuickSheet = true }) },
+                              contentAlignment = Alignment.CenterStart
+                          ) {
+                              when (clockType) {
+                                  1 -> {
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Canvas(modifier = Modifier.size(124.dp)) {
+                                              val center = Offset(size.width / 2f, size.height / 2f)
+                                              val r = size.width / 2f
+                                              drawCircle(Color(0xEEFFFBEB), radius = r)
+                                              drawCircle(Color(0xFFD97706), radius = r, style = Stroke(width = 3.dp.toPx()))
+                                              val ears = Path().apply {
+                                                  moveTo(center.x - 28f, center.y - 12f); lineTo(center.x - 46f, center.y - r * 0.82f); lineTo(center.x - 10f, center.y - 20f)
+                                                  moveTo(center.x + 28f, center.y - 12f); lineTo(center.x + 46f, center.y - r * 0.82f); lineTo(center.x + 10f, center.y - 20f)
+                                              }
+                                              drawPath(ears, Color(0xFFF59E0B).copy(alpha = 0.55f), style = Stroke(width = 2.5.dp.toPx()))
+                                              val hAng = ((hourFloat % 12f) * 30f - 90f) * (PI.toFloat() / 180f)
+                                              val mAng = (minuteFloat * 6f - 90f) * (PI.toFloat() / 180f)
+                                              drawLine(Color(0xFFB45309), center, Offset(center.x + cos(hAng) * (r * 0.50f), center.y + sin(hAng) * (r * 0.50f)), strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+                                              drawLine(Color(0xFF111827), center, Offset(center.x + cos(mAng) * (r * 0.72f), center.y + sin(mAng) * (r * 0.72f)), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                                              drawCircle(Color(0xFFD97706), radius = 4.5.dp.toPx(), center = center)
+                                          }
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Box(modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xDDFFFBEB)).border(1.dp, Color(0xFFD97706), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 4.dp)) {
+                                              Text("🐾 LINCE IBÉRICO • $currentTime • 🔋 $batteryLevel%", color = Color(0xFF78350F), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                          }
+                                      }
+                                  }
+                                  2 -> {
+                                      Box(modifier = Modifier.clip(RoundedCornerShape(22.dp)).background(Color(0xEEFFFBEB)).border(2.dp, Color(0xFF10B981), RoundedCornerShape(22.dp)).padding(horizontal = 20.dp, vertical = 12.dp)) {
+                                          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                              Text("🐾 PARQUE DE DOÑANA", color = Color(0xFF047857), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
+                                              Text(currentTime, color = Color(0xFF064E3B), fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+                                              Text("$currentDateShort  •  ☀ 22°C  •  🔋 $batteryLevel%", color = Color(0xFF059669), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                          }
+                                      }
+                                  }
+                                  3 -> {
+                                      Column(modifier = Modifier.width(180.dp)) {
+                                          Text("${currentWeekNumber}TH WEEK OF 2026", color = primaryTextColor.copy(alpha = 0.75f), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                                          Spacer(modifier = Modifier.height(5.dp))
+                                          Box(modifier = Modifier.fillMaxWidth(0.75f).height(6.dp).clip(CircleShape).background(primaryTextColor.copy(alpha = 0.2f))) {
+                                              Box(modifier = Modifier.fillMaxWidth(0.6f).height(6.dp).clip(CircleShape).background(Color(0xFF0284C7)))
+                                          }
+                                          Text(currentDayName.lowercase(), color = primaryTextColor, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif)
+                                          Text("$currentTime  •  ☀ 21°C  •  🔋 $batteryLevel%", color = primaryTextColor.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                                  4 -> {
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Text("☥  SOL DE RA • VALLE DEL NILO  ☥", color = Color(0xFFFFD700), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Canvas(modifier = Modifier.size(128.dp)) {
+                                              val center = Offset(size.width / 2f, size.height / 2f)
+                                              val r = size.width / 2f
+                                              drawCircle(Color(0xDD1E293B), radius = r, center = center)
+                                              drawCircle(Color(0xFFFFD700), radius = r, style = Stroke(width = 2.8.dp.toPx()))
+                                              val pyr = Path().apply {
+                                                  moveTo(center.x, center.y - r * 0.35f)
+                                                  lineTo(center.x - r * 0.35f, center.y + r * 0.25f)
+                                                  lineTo(center.x + r * 0.35f, center.y + r * 0.25f)
+                                                  close()
+                                              }
+                                              drawPath(pyr, Color(0xFFFFD700).copy(alpha = 0.3f))
+                                              val hAng = ((hourFloat % 12f) * 30f - 90f) * (PI.toFloat() / 180f)
+                                              val mAng = (minuteFloat * 6f - 90f) * (PI.toFloat() / 180f)
+                                              drawLine(Color(0xFFFFD700), center, Offset(center.x + cos(hAng) * (r * 0.50f), center.y + sin(hAng) * (r * 0.50f)), strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+                                              drawLine(Color(0xFFFEF08A), center, Offset(center.x + cos(mAng) * (r * 0.72f), center.y + sin(mAng) * (r * 0.72f)), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                                              drawCircle(Color(0xFFFFD700), radius = 4.dp.toPx(), center = center)
+                                          }
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xCC111827)).border(1.dp, Color(0xFFFFD700), RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 4.dp)) {
+                                              Text("▲ $currentTime  •  $currentDateShort  •  🔋 $batteryLevel%", color = Color(0xFFFEF08A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                          }
+                                      }
+                                  }
+                                  5 -> {
+                                      Column(
+                                          modifier = Modifier.width(230.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xDD1E293B)).border(2.dp, Color(0xFFFFD700), RoundedCornerShape(24.dp)).padding(14.dp),
+                                          horizontalAlignment = Alignment.CenterHorizontally
+                                      ) {
+                                          Text("☥  DINASTÍA DEL NILO  ☥", color = Color(0xFFFFD700), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                                          Text(currentTime, color = Color(0xFFFEF9C3), fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Serif)
+                                          Text("$currentDayName, $currentDayNumber  •  🔋 $batteryLevel%", color = Color(0xFF2DD4BF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                                  6 -> {
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Text("SEMANA $currentWeekNumber DE 2026", color = Color(0xFFD4AF37), fontSize = 9.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Box(modifier = Modifier.border(1.5.dp, Color(0xFFD4AF37), RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.35f)).padding(horizontal = 22.dp, vertical = 10.dp)) {
+                                              Text(currentDayName.toCharArray().joinToString(" "), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                                          }
+                                          Spacer(modifier = Modifier.height(4.dp))
+                                          Text(currentTime, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                                  7 -> {
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Box(modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White).padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                              Text(currentDayName, color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                          }
+                                          Spacer(modifier = Modifier.height(10.dp))
+                                          Canvas(modifier = Modifier.size(116.dp)) {
+                                              drawCircle(color = Color.White)
+                                              val center = Offset(size.width / 2f, size.height / 2f)
+                                              val r = size.width / 2f
+                                              val hAng = ((hourFloat % 12f) * 30f - 90f) * (PI.toFloat() / 180f)
+                                              val mAng = (minuteFloat * 6f - 90f) * (PI.toFloat() / 180f)
+                                              drawLine(Color.Black, center, Offset(center.x + cos(hAng) * (r * 0.48f), center.y + sin(hAng) * (r * 0.48f)), strokeWidth = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                                              drawLine(Color.Black, center, Offset(center.x + cos(mAng) * (r * 0.70f), center.y + sin(mAng) * (r * 0.70f)), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                                              drawCircle(Color.Black, radius = 3.5.dp.toPx(), center = center)
+                                          }
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Text("$currentDateShort  •  $currentTime", color = primaryTextColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                                  8 -> {
+                                      Column(modifier = Modifier.width(175.dp)) {
+                                          Text(currentDayNumber, color = primaryTextColor, fontSize = 52.sp, fontWeight = FontWeight.ExtraBold)
+                                          Text("Soleado • 21°C • Batería $batteryLevel%\nHora actual: $currentTime", color = primaryTextColor.copy(alpha = 0.8f), fontSize = 10.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium)
+                                          Spacer(modifier = Modifier.height(8.dp))
+                                          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                              Row(modifier = Modifier.weight(1f).height(26.dp).clip(CircleShape).background(Color(0xFF111827)).clickable { isSearching = true }.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                  Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                                              }
+                                              Box(modifier = Modifier.size(18.dp).clip(CircleShape).background(Color(0xFF0284C7)))
+                                              Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(Color(0xFF38BDF8)))
+                                          }
+                                      }
+                                  }
+                                  else -> {
+                                      Column {
+                                          Text(currentTime, color = primaryTextColor, fontSize = 54.sp, fontWeight = FontWeight.Light, fontFamily = appFontFamily)
+                                          Text("$currentDateShort  •  🔋 $batteryLevel%", color = primaryTextColor.copy(alpha = 0.85f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                              }
+                          }
+                      }
+
+                      if (isSearching) {
+                          Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Color.White).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                              Icon(Icons.Default.Search, contentDescription = null, tint = Color.Black)
+                              Spacer(modifier = Modifier.width(8.dp))
+                              BasicTextField(
+                                  value = searchQuery,
+                                  onValueChange = { searchQuery = it },
+                                  singleLine = true,
+                                  textStyle = TextStyle(color = Color.Black, fontSize = 16.sp),
+                                  modifier = Modifier.weight(1f),
+                                  decorationBox = { inner -> if (searchQuery.isEmpty()) Text("Buscar aplicación...", color = Color.Gray); inner() }
+                              )
+                              IconButton(onClick = { searchQuery = ""; isSearching = false }, modifier = Modifier.size(22.dp)) {
+                                  Icon(Icons.Default.Close, contentDescription = null, tint = Color.Black)
+                              }
+                          }
+                          Spacer(modifier = Modifier.height(10.dp))
+                      }
+
+                      if (!isSearching && activeChar != '★') {
+                          Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              modifier = Modifier.padding(bottom = 8.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xCC111827)).border(1.dp, accentColor, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)
+                          ) {
+                              Text("Letra $activeChar", color = Color.White, fontWeight = FontWeight.Bold)
+                              Spacer(modifier = Modifier.width(12.dp))
+                              Text("★ Volver a Favoritos", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { activeChar = '★'; activeWaveIndex = null })
+                          }
+                      }
+
+                      LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
+                          items(displayedApps.size) { i ->
+                              val app = displayedApps[i]
+                              val arcOffsetDp = if (touchY != null) {
+                                  val norm = (i - displayedApps.size / 2f) / (displayedApps.size.coerceAtLeast(1) / 2f)
+                                  val curve = (1f - (norm * norm).coerceIn(0f, 1f)) * 34f
+                                  if (waveOnLeft) curve else -curve
+                              } else 0f
+
+                              LinceAppRow(app, primaryTextColor, appFontFamily, iconPackMode, iconSizeDp, hideFavoriteNames && activeChar == '★' && !isSearching, arcOffsetDp, { launchApp(context, app.packageName) }, { selectedAppForMenu = app })
+                          }
+
+                          item(key = "footer_btns") {
+                              Spacer(modifier = Modifier.height(14.dp))
+                              // SELECTOR RÁPIDO DE CÍRCULOS DE COLORES PARA LA BARRA DE LETRAS
+                              Row(
+                                  modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  WAVE_COLOR_OPTIONS.forEach { (id, _, col) ->
+                                      val selected = waveColorMode == id
+                                      Box(
+                                          modifier = Modifier
+                                              .size(if (selected) 30.dp else 24.dp)
+                                              .clip(CircleShape)
+                                              .background(col)
+                                              .border(if (selected) 2.5.dp else 1.dp, if (selected) Color.White else Color.Black.copy(alpha = 0.4f), CircleShape)
+                                              .clickable {
+                                                  waveColorMode = id
+                                                  prefs.edit().putString("wave_color_mode", id).apply()
+                                              },
+                                          contentAlignment = Alignment.Center
+                                      ) {
+                                          if (id == "rainbow") Text("🌈", fontSize = 11.sp)
+                                          else if (id == "fire") Text("🔥", fontSize = 11.sp)
+                                          else if (id == "ocean") Text("🌊", fontSize = 11.sp)
+                                      }
+                                  }
+                              }
+                              Spacer(modifier = Modifier.height(8.dp))
+                              Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                                  Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xCC111827)).border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(20.dp)).clickable { currentScreen = "IMPORT_THEMES" }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                      Text("📥 Importar Tema", color = Color(0xFF00E5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                  }
+                                  Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xCC111827)).border(1.dp, Color(0xFFFFD700), RoundedCornerShape(20.dp)).clickable { currentScreen = "THEMES" }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                      Text("✨ Temas", color = Color(0xFFFFD700), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                  }
+                                  Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xCC111827)).border(1.dp, Color(0xFF34D399), RoundedCornerShape(20.dp)).clickable { showWaveColorPicker = true }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                      Text("🌈 Color Letras", color = Color(0xFF34D399), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                  }
+                                  Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xCC111827)).border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(20.dp)).clickable { currentScreen = "FAVORITES" }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                      Text("★ Favoritos", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                  }
+                                  Box(modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xCC111827)).border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(20.dp)).clickable { currentScreen = "SETTINGS" }.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                      Text("⚙ Ajustes", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  // 3. OLA ALFABÉTICA INTERACTIVA
+                  Box(
+                      modifier = Modifier.fillMaxHeight().width(72.dp).align(if (waveOnLeft) Alignment.CenterStart else Alignment.CenterEnd)
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectTapGestures(onPress = { off -> handleWaveTouch(off.y); tryAwaitRelease(); touchY = null; activeWaveIndex = null })
+                          }
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectDragGestures(
+                                  onDragStart = { off -> handleWaveTouch(off.y) },
+                                  onDrag = { chg, _ -> chg.consume(); handleWaveTouch(chg.position.y) },
+                                  onDragEnd = { touchY = null; activeWaveIndex = null },
+                                  onDragCancel = { touchY = null; activeWaveIndex = null }
+                              )
+                          }
+                  ) {}
+
+                  wavePoints.forEachIndexed { index, pt ->
+                      val char = LINCE_INDEX[index]
+                      val isSel = activeWaveIndex == index
+                      val isCurr = activeChar == char && activeWaveIndex == null
+                      val alphaVal = if (touchY != null) 1f else if (hideAlphabet) 0f else 0.96f
+                      if (alphaVal > 0.01f) {
+                          val letterColor = getWaveLetterColor(index, waveColorMode, primaryTextColor)
+                          val boxPx = with(density) { 24.dp.toPx() }
+                          Box(
+                              modifier = Modifier
+                                  .offset { IntOffset((pt.x - boxPx / 2f).roundToInt(), (pt.y - boxPx / 2f).roundToInt()) }
+                                  .size(24.dp)
+                                  .scale(if (isSel) 1.75f else if (isCurr) 1.35f else 1f)
+                                  .alpha(alphaVal)
+                                  .background(if (isSel) Color(0xEE111827) else Color(0x55000000), CircleShape),
+                              contentAlignment = Alignment.Center
+                          ) {
+                              Text(
+                                  text = char.toString(),
+                                  color = letterColor,
+                                  fontSize = if (isSel) 13.sp else 11.sp,
+                                  fontWeight = FontWeight.ExtraBold
+                              )
+                          }
+                      }
+                  }
+
+                  if (activeWaveIndex != null && touchY != null) {
+                      val activeLetterColor = getWaveLetterColor(activeWaveIndex!!, waveColorMode, accentColor)
+                      val bubbleSizePx = with(density) { 58.dp.toPx() }
+                      val bx = if (waveOnLeft) with(density) { 96.dp.toPx() } else w - with(density) { 96.dp.toPx() } - bubbleSizePx
+                      val by = (touchY!! - bubbleSizePx / 2f).coerceIn(topWaveY - 20f, bottomWaveY - bubbleSizePx + 20f)
+                      Box(
+                          modifier = Modifier
+                              .offset { IntOffset(bx.roundToInt(), by.roundToInt()) }
+                              .size(58.dp)
+                              .background(Color(0xEE111827), CircleShape)
+                              .border(2.5.dp, activeLetterColor, CircleShape),
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Text(LINCE_INDEX[activeWaveIndex!!].toString(), color = activeLetterColor, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                      }
+                  }
+
+                  if (showLinceButton) {
+                      Box(
+                          modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 18.dp).size(50.dp).clip(CircleShape).background(Color(0xEE111827)).border(2.dp, accentColor, CircleShape)
+                              .pointerInput(Unit) { detectTapGestures(onTap = { currentScreen = "SETTINGS" }, onLongPress = { showQuickSheet = true }) },
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Icon(Icons.Default.Settings, contentDescription = null, tint = accentColor)
+                      }
+                  }
+
+                  if (showWaveColorPicker) {
+                      AlertDialog(
+                          onDismissRequest = { showWaveColorPicker = false },
+                          containerColor = dialogBgColor,
+                          title = { Text("🌈 Color de la Barra de Letras", color = Color.White, fontWeight = FontWeight.Bold) },
+                          text = {
+                              Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  WAVE_COLOR_OPTIONS.forEach { (id, label, previewCol) ->
+                                      Row(
+                                          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (waveColorMode == id) Color(0xFF334155) else Color(0xFF0F172A)).border(1.5.dp, previewCol, RoundedCornerShape(12.dp))
+                                              .clickable {
+                                                  waveColorMode = id
+                                                  prefs.edit().putString("wave_color_mode", id).apply()
+                                                  showWaveColorPicker = false
+                                              }.padding(12.dp),
+                                          verticalAlignment = Alignment.CenterVertically
+                                      ) {
+                                          Box(modifier = Modifier.size(22.dp).clip(CircleShape).background(previewCol).border(1.dp, Color.White, CircleShape))
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                              }
+                          },
+                          confirmButton = { TextButton(onClick = { showWaveColorPicker = false }) { Text("Cerrar", color = Color(0xFF38BDF8)) } }
+                      )
+                  }
+
+                  if (showQuickSheet) {
+                      AlertDialog(
+                          onDismissRequest = { showQuickSheet = false },
+                          containerColor = dialogBgColor,
+                          title = { Text("Personalización Rápida", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold) },
+                          text = {
+                              Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                  TextButton(onClick = { showQuickSheet = false; currentScreen = "IMPORT_THEMES" }) { Text("📥  Importar Tema de otra App / Imagen", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold) }
+                                  TextButton(onClick = { showQuickSheet = false; showWaveColorPicker = true }) { Text("🌈  Color de la Barra de Letras (Arcoíris / Colores)", color = Color(0xFF34D399), fontWeight = FontWeight.Bold) }
+                                  TextButton(onClick = { showQuickSheet = false; currentScreen = "THEMES" }) { Text("✨  Temas (Lince Claro, Niagara y Egipto)", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold) }
+                                  TextButton(onClick = { showQuickSheet = false; showClockPicker = true }) { Text("🕒  Cambiar Reloj (Lince / KWGT Niagara / Egipto)", color = Color.White) }
+                                  TextButton(onClick = { showQuickSheet = false; currentScreen = "WALLPAPERS" }) { Text("🖼  Fondos de Pantalla y Galería", color = Color.White) }
+                                  TextButton(onClick = { showQuickSheet = false; currentScreen = "FAVORITES" }) { Text("★  Editar aplicaciones favoritas", color = Color.White) }
+                                  TextButton(onClick = { showQuickSheet = false; isMovingWidgetMode = true }) { Text("↕  Mover altura del reloj y lista", color = Color.White) }
+                                  TextButton(onClick = { showQuickSheet = false; currentScreen = "SETTINGS" }) { Text("⚙  Abrir todos los Ajustes", color = Color(0xFFA855F7)) }
+                              }
+                          },
+                          confirmButton = { TextButton(onClick = { showQuickSheet = false }) { Text("Cerrar", color = Color.Gray) } }
+                      )
+                  }
+
+                  if (showClockPicker) {
+                      AlertDialog(
+                          onDismissRequest = { showClockPicker = false },
+                          containerColor = dialogBgColor,
+                          title = { Text("Relojes: Lince, Niagara y Egipto", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold) },
+                          text = {
+                              Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  listOf(
+                                      1 to "🐾 1. Reloj Orejas de Lince (Esfera Clara Marfil)",
+                                      2 to "🐾 2. Reloj Parque de Doñana (Claro Esmeralda)",
+                                      3 to "🌊 3. Niagara KWGT: Semana 05 + Barra (Intro Izquierda)",
+                                      6 to "🌊 4. Niagara KWGT: Cartel Dorado [ M A R T E S ]",
+                                      7 to "🌊 5. Niagara KWGT: Reloj Analógico Blanco (Diseño 1)",
+                                      8 to "🌊 6. Niagara KWGT: Día + Buscador y Puntos (Diseño 2)",
+                                      4 to "☥ 7. Egipto: Reloj Solar de Ra y Pirámide",
+                                      5 to "▲ 8. Egipto: Cartucho Real Faraónico",
+                                      9 to "🕒 9. Reloj Digital Grande Clásico"
+                                  ).forEach { (id, label) ->
+                                      Box(
+                                          modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (clockType == id) Color(0xFF0284C7) else Color(0xFF0F172A))
+                                              .clickable { clockType = id; prefs.edit().putInt("clock_type", id).apply(); showClockPicker = false }.padding(12.dp)
+                                      ) {
+                                          Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                              }
+                          },
+                          confirmButton = { TextButton(onClick = { showClockPicker = false }) { Text("Cerrar", color = Color.Gray) } }
+                      )
+                  }
+
+                  selectedAppForMenu?.let { app ->
+                      val isFav = app.packageName in favoritePackages
+                      AlertDialog(
+                          onDismissRequest = { selectedAppForMenu = null },
+                          containerColor = dialogBgColor,
+                          title = { Text(app.label, color = Color.White, fontWeight = FontWeight.Bold) },
+                          text = {
+                              Column {
+                                  TextButton(onClick = {
+                                      val up = favoritePackages.toMutableSet()
+                                      if (isFav) up.remove(app.packageName) else up.add(app.packageName)
+                                      favoritePackages = up; prefs.edit().putStringSet("favorites", up).apply(); selectedAppForMenu = null
+                                  }) { Text(if (isFav) "★ Quitar de Favoritos" else "★ Anclar en Favoritos", color = Color(0xFF38BDF8)) }
+                                  TextButton(onClick = {
+                                      context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.fromParts("package", app.packageName, null); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                      selectedAppForMenu = null
+                                  }) { Text("ℹ Información de la aplicación", color = Color.White) }
+                                  TextButton(onClick = {
+                                      context.startActivity(Intent(Intent.ACTION_DELETE).apply { data = Uri.parse("package:${app.packageName}"); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                      selectedAppForMenu = null
+                                  }) { Text("🗑 Desinstalar", color = Color(0xFFFF5252)) }
+                              }
+                          },
+                          confirmButton = { TextButton(onClick = { selectedAppForMenu = null }) { Text("Cerrar", color = Color.Gray) } }
+                      )
+                  }
+              }
+          }
+
+          fun drawBrightLinceWallpaper(drawScope: DrawScope, cw: Float, ch: Float, style: Int) {
+              with(drawScope) {
+                  val skyColors = when (style) {
+                      2 -> listOf(Color(0xFFECFDF5), Color(0xFFA7F3D0), Color(0xFF6EE7B7))
+                      3 -> listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFEA580C))
+                      else -> listOf(Color(0xFFE0F2FE), Color(0xFF7DD3FC), Color(0xFFFEF08A))
+                  }
+                  drawRect(brush = Brush.verticalGradient(skyColors, startY = 0f, endY = ch * 0.72f))
+
+                  val sunPos = Offset(cw * 0.74f, ch * 0.20f)
+                  drawCircle(Color.White.copy(alpha = 0.65f), radius = cw * 0.36f, center = sunPos)
+                  drawCircle(Color(0xFFFFFBEB), radius = cw * 0.14f, center = sunPos)
+
+                  val hill1 = Path().apply {
+                      moveTo(0f, ch * 0.58f)
+                      quadraticBezierTo(cw * 0.35f, ch * 0.49f, cw * 0.75f, ch * 0.59f)
+                      quadraticBezierTo(cw * 0.9f, ch * 0.63f, cw, ch * 0.56f)
+                      lineTo(cw, ch); lineTo(0f, ch); close()
+                  }
+                  drawPath(hill1, if (style == 2) Color(0xFF34D399) else if (style == 3) Color(0xFFD97706) else Color(0xFF4ADE80))
+
+                  val hill2 = Path().apply {
+                      moveTo(0f, ch * 0.70f)
+                      quadraticBezierTo(cw * 0.45f, ch * 0.63f, cw, ch * 0.73f)
+                      lineTo(cw, ch); lineTo(0f, ch); close()
+                  }
+                  drawPath(hill2, if (style == 2) Color(0xFFFEF3C7) else if (style == 3) Color(0xFFB45309) else Color(0xFF22C55E))
+
+                  val ox = cw * 0.46f
+                  val oy = ch * 0.44f
+                  val sz = cw * 0.50f
+
+                  val body = Path().apply {
+                      moveTo(ox + sz * 0.05f, oy + sz * 1.05f)
+                      quadraticBezierTo(ox + sz * 0.14f, oy + sz * 0.46f, ox + sz * 0.32f, oy + sz * 0.34f)
+                      lineTo(ox + sz * 0.36f, oy + sz * 0.10f)
+                      lineTo(ox + sz * 0.45f, oy + sz * 0.22f)
+                      lineTo(ox + sz * 0.55f, oy + sz * 0.06f)
+                      lineTo(ox + sz * 0.62f, oy + sz * 0.22f)
+                      lineTo(ox + sz * 0.78f, oy + sz * 0.33f)
+                      lineTo(ox + sz * 0.66f, oy + sz * 0.44f)
+                      lineTo(ox + sz * 0.58f, oy + sz * 0.60f)
+                      lineTo(ox + sz * 0.54f, oy + sz * 1.05f)
+                      close()
+                  }
+                  drawPath(body, Color(0xFFF59E0B))
+                  drawPath(body, Color(0xFFFFFBEB), style = Stroke(width = 4f))
+
+                  val whiteFur = Path().apply {
+                      moveTo(ox + sz * 0.46f, oy + sz * 0.33f)
+                      lineTo(ox + sz * 0.68f, oy + sz * 0.39f)
+                      lineTo(ox + sz * 0.58f, oy + sz * 0.62f)
+                      lineTo(ox + sz * 0.48f, oy + sz * 0.95f)
+                      lineTo(ox + sz * 0.34f, oy + sz * 0.95f)
+                      lineTo(ox + sz * 0.38f, oy + sz * 0.48f)
+                      close()
+                  }
+                  drawPath(whiteFur, Color(0xFFFFFBEB))
+
+                  drawLine(Color(0xFF111827), Offset(ox + sz * 0.36f, oy + sz * 0.10f), Offset(ox + sz * 0.33f, oy - sz * 0.08f), strokeWidth = 7.5f, cap = StrokeCap.Round)
+                  drawLine(Color(0xFF111827), Offset(ox + sz * 0.55f, oy + sz * 0.06f), Offset(ox + sz * 0.54f, oy - sz * 0.12f), strokeWidth = 7.5f, cap = StrokeCap.Round)
+
+                  val eyeCenter = Offset(ox + sz * 0.58f, oy + sz * 0.28f)
+                  drawCircle(Color(0xFF111827), radius = 12f, center = eyeCenter)
+                  drawCircle(Color(0xFFFDE047), radius = 9f, center = eyeCenter)
+                  drawCircle(Color(0xFF111827), radius = 4.5f, center = eyeCenter)
+                  drawCircle(Color.White, radius = 2.5f, center = eyeCenter + Offset(-2.5f, -2.5f))
+
+                  val noseCenter = Offset(ox + sz * 0.75f, oy + sz * 0.33f)
+                  drawCircle(Color(0xFFF43F5E), radius = 7f, center = noseCenter)
+
+                  val spots = listOf(
+                      Offset(0.20f, 0.55f), Offset(0.27f, 0.48f), Offset(0.33f, 0.58f),
+                      Offset(0.16f, 0.68f), Offset(0.26f, 0.70f), Offset(0.22f, 0.82f)
+                  )
+                  spots.forEach { s ->
+                      drawCircle(Color(0xFF451A03), radius = 7f, center = Offset(ox + sz * s.x, oy + sz * s.y))
+                  }
+              }
+          }
+
+          fun drawNiagaraSplitWaves(drawScope: DrawScope, cw: Float, ch: Float) {
+              with(drawScope) {
+                  val splitX = cw * 0.53f
+                  drawRect(color = Color(0xFFF5F5F4))
+                  drawRect(color = Color(0xFF1D5B96), topLeft = Offset(splitX, 0f), size = Size(cw - splitX, ch))
+                  val centers = listOf(
+                      Offset(cw * 0.65f, ch * 0.12f), Offset(cw * 0.88f, ch * 0.26f),
+                      Offset(cw * 0.62f, ch * 0.44f), Offset(cw * 0.90f, ch * 0.60f),
+                      Offset(cw * 0.66f, ch * 0.76f), Offset(cw * 0.86f, ch * 0.90f)
+                  )
+                  centers.forEach { c ->
+                      for (r in 5 downTo 1) {
+                          val rad = r * (cw * 0.065f)
+                          drawCircle(if (r % 2 == 0) Color(0xFF0F3C69) else Color(0xFF3882C4), radius = rad, center = c)
+                          drawCircle(Color(0xFFF5F5F4).copy(alpha = 0.85f), radius = rad, center = c, style = Stroke(width = 2.5.dp.toPx()))
+                      }
+                  }
+                  drawRect(color = Color(0xFFF5F5F4), topLeft = Offset(0f, 0f), size = Size(splitX, ch))
+              }
+          }
+
+          fun drawNiagaraDarkBeach(drawScope: DrawScope, cw: Float, ch: Float) {
+              with(drawScope) {
+                  drawRect(color = Color(0xFF07090D))
+                  val foam = Path().apply {
+                      moveTo(cw * 0.68f, 0f)
+                      var y = 0f
+                      while (y <= ch) {
+                          lineTo(cw * 0.68f + sin(y * 0.012f) * (cw * 0.045f), y)
+                          y += 20f
+                      }
+                      lineTo(cw, ch); lineTo(cw, 0f); close()
+                  }
+                  drawPath(foam, Brush.horizontalGradient(listOf(Color(0xFF334155), Color(0xFF1E293B)), startX = cw * 0.64f, endX = cw))
+              }
+          }
+
+          fun drawEgyptianNileWallpaper(drawScope: DrawScope, cw: Float, ch: Float, isNight: Boolean) {
+              with(drawScope) {
+                  val sky = if (isNight) listOf(Color(0xFF060B19), Color(0xFF0F1E3D), Color(0xFF1E3A5F)) else listOf(Color(0xFF0284C7), Color(0xFFF59E0B), Color(0xFFFEF08A))
+                  drawRect(brush = Brush.verticalGradient(sky, startY = 0f, endY = ch * 0.62f))
+                  val sunCenter = Offset(cw * 0.68f, ch * 0.32f)
+                  drawCircle(Color(0xFFFEF08A).copy(alpha = 0.5f), radius = cw * 0.32f, center = sunCenter)
+                  drawCircle(Color(0xFFFFFBEB), radius = cw * 0.12f, center = sunCenter)
+
+                  val horizonY = ch * 0.58f
+                  fun pyramid(px: Float, py: Float, lx: Float, cx: Float, rx: Float) {
+                      val lit = Path().apply { moveTo(px, py); lineTo(lx, horizonY); lineTo(cx, horizonY); close() }
+                      val dark = Path().apply { moveTo(px, py); lineTo(cx, horizonY); lineTo(rx, horizonY); close() }
+                      drawPath(lit, if (isNight) Color(0xFF334155) else Color(0xFFFBBF24))
+                      drawPath(dark, if (isNight) Color(0xFF0F172A) else Color(0xFFB45309))
+                      val capY = py + (horizonY - py) * 0.18f
+                      val cap = Path().apply { moveTo(px, py); lineTo(px + (lx - px) * 0.18f, capY); lineTo(px + (rx - px) * 0.18f, capY); close() }
+                      drawPath(cap, Color(0xFFFFD700))
+                  }
+                  pyramid(cw * 0.25f, ch * 0.46f, cw * 0.08f, cw * 0.23f, cw * 0.38f)
+                  pyramid(cw * 0.56f, ch * 0.36f, cw * 0.28f, cw * 0.53f, cw * 0.80f)
+                  pyramid(cw * 0.84f, ch * 0.40f, cw * 0.62f, cw * 0.81f, cw * 1.04f)
+
+                  drawRect(
+                      brush = Brush.verticalGradient(if (isNight) listOf(Color(0xFF1E1B2E), Color(0xFF090A10)) else listOf(Color(0xFFD97706), Color(0xFF78350F)), startY = horizonY, endY = ch),
+                      topLeft = Offset(0f, horizonY),
+                      size = Size(cw, ch - horizonY)
+                  )
+                  val nile = Path().apply {
+                      moveTo(cw * 0.52f, horizonY)
+                      quadraticBezierTo(cw * 0.32f, ch * 0.72f, cw * 0.22f, ch)
+                      lineTo(cw, ch); lineTo(cw, ch * 0.80f)
+                      quadraticBezierTo(cw * 0.78f, ch * 0.70f, cw * 0.66f, horizonY)
+                      close()
+                  }
+                  drawPath(nile, Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7)), startY = horizonY, endY = ch))
+              }
+          }
+
+          @Composable
+          fun SettingsCardItem(title: String, subtitle: String, accent: Color, onClick: () -> Unit) {
+              Column(
+                  modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF1E293B)).border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(16.dp)).clickable { onClick() }.padding(16.dp)
+              ) {
+                  Text(title, color = accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(subtitle, color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+              }
+          }
+
+          @Composable
+          fun LinceAppRow(app: AppItem, textColor: Color, fontFamily: FontFamily, iconPackMode: String, iconSizeDp: Float, hideName: Boolean, horizontalShiftDp: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+              val filter = remember(iconPackMode) {
+                  when (iconPackMode) {
+                      "gold_pharaoh" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(0f,0f,0f,0f,255f, 0f,0f,0f,0f,215f, 0f,0f,0f,0f,0f, 0f,0f,0f,1f,0f)))
+                      "white_minimal" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(0f,0f,0f,0f,255f, 0f,0f,0f,0f,255f, 0f,0f,0f,0f,255f, 0f,0f,0f,1f,0f)))
+                      "black_essence" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(0f,0f,0f,0f,18f, 0f,0f,0f,0f,24f, 0f,0f,0f,0f,39f, 0f,0f,0f,1f,0f)))
+                      "neon_cyan" -> ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(0f,0f,0f,0f,245f, 0f,0f,0f,0f,158f, 0f,0f,0f,0f,11f, 0f,0f,0f,1f,0f)))
+                      else -> null
+                  }
+              }
+              Row(
+                  modifier = Modifier.fillMaxWidth().offset(x = horizontalShiftDp.dp).clip(RoundedCornerShape(14.dp))
+                      .pointerInput(app.packageName) { detectTapGestures(onTap = { onClick() }, onLongPress = { onLongClick() }) }
+                      .padding(horizontal = 4.dp, vertical = 7.dp),
+                  verticalAlignment = Alignment.CenterVertically
+              ) {
+                  if (iconPackMode == "default" && app.icon != null) {
+                      Image(bitmap = app.icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(iconSizeDp.dp).clip(RoundedCornerShape(10.dp)))
+                  } else {
+                      val c = when (iconPackMode) {
+                          "gold_pharaoh" -> Color(0xFFFFD700)
+                          "black_essence" -> Color(0xFF111827)
+                          "neon_cyan" -> Color(0xFFD97706)
+                          else -> Color.White
+                      }
+                      val bgCircle = if (iconPackMode == "black_essence") Color.White.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.25f)
+                      Box(modifier = Modifier.size(iconSizeDp.dp).background(bgCircle, CircleShape).border(1.8.dp, c, CircleShape), contentAlignment = Alignment.Center) {
+                          if (app.icon != null && filter != null) {
+                              Image(bitmap = app.icon.asImageBitmap(), contentDescription = null, colorFilter = filter, modifier = Modifier.size((iconSizeDp * 0.58f).dp).clip(CircleShape))
+                          } else {
+                              Text(app.initial.toString(), color = c, fontWeight = FontWeight.Bold)
+                          }
+                      }
+                  }
+                  if (!hideName) {
+                      Spacer(modifier = Modifier.width(16.dp))
+                      Text(app.label, color = textColor, fontSize = 16.sp, fontFamily = fontFamily, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                  }
+              }
+          }
+
+          fun launchApp(context: Context, packageName: String) {
+              context.packageManager.getLaunchIntentForPackage(packageName)?.let {
+                  it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  context.startActivity(it)
+              }
+          }
+
+          fun drawableToBitmap(drawable: Drawable): Bitmap {
+              if (drawable is BitmapDrawable && drawable.bitmap != null) return drawable.bitmap
+              val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+              val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+              val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+              val canvas = AndroidCanvas(bmp)
+              drawable.setBounds(0, 0, canvas.width, canvas.height)
+              drawable.draw(canvas)
+              return bmp
+          }
+          EOF
+          sed -i 's/^          //' app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+
+          gradle assembleDebug --no-daemon
+
+      - name: 5. Publicar APK en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v10.0.${{ github.run_number }}
+          name: "Lince Launcher v10.0.${{ github.run_number }} - Importador Universal"
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
