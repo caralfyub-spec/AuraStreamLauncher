@@ -1,0 +1,615 @@
+name: Compilar APK Directo
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Leer archivos
+        uses: actions/checkout@v4
+
+      - name: 2. Activar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 4. Construir Lince Ibérico Launcher v11.3 (Tema Imagen)
+        run: |
+          rm -rf app build .gradle local.properties settings.gradle* build.gradle* gradle.properties MainActivity.kt
+          mkdir -p app/src/main/java/com/atenea/pixelultralauncher
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+          sed -i 's/^[[:space:]]*//' gradle.properties
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "LinceIbericoLauncher"
+          include(":app")
+          EOF
+          sed -i 's/^          //' settings.gradle.kts
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          sed -i 's/^          //' build.gradle.kts
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.atenea.pixelultralauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.atenea.pixelultralauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 13
+                  versionName = "11.3-TemaImagenLince"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          sed -i 's/^          //' app/build.gradle.kts
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+              <application
+                  android:label="Lince Ibérico"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          sed -i 's/^          //' app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+          package com.atenea.pixelultralauncher
+
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas as AndroidCanvas
+          import android.graphics.drawable.BitmapDrawable
+          import android.graphics.drawable.Drawable
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.format.DateFormat
+          import android.view.HapticFeedbackConstants
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.setContent
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.horizontalScroll
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.geometry.Size
+          import androidx.compose.ui.graphics.*
+          import androidx.compose.ui.graphics.drawscope.DrawScope
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalView
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.IntSize
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.view.WindowCompat
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import java.io.File
+          import java.io.FileOutputStream
+          import java.util.Calendar
+          import java.util.Date
+          import kotlin.math.*
+
+          data class AppItem(val label: String, val packageName: String, val icon: Bitmap?, val initial: Char)
+
+          val LINCE_INDEX: List<Char> = listOf('★') + ('A'..'Z').toList() + listOf('#')
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  setContent { LinceImageThemeApp() }
+              }
+          }
+
+          fun expandStatusBar(context: Context) {
+              try {
+                  val service = context.getSystemService("statusbar")
+                  Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(service)
+              } catch (_: Exception) {}
+          }
+
+          fun getBatteryPercentage(context: Context): Int {
+              return try {
+                  val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                  val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                  val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                  if (level >= 0 && scale > 0) (level * 100) / scale else 100
+              } catch (_: Exception) { 100 }
+          }
+
+          @Composable
+          fun LinceImageThemeApp() {
+              val context = LocalContext.current
+              val view = LocalView.current
+              val density = LocalDensity.current
+              val prefs = remember { context.getSharedPreferences("lince_image_theme_v11_3", Context.MODE_PRIVATE) }
+
+              var waveOnLeft by remember { mutableStateOf(true) } // Barra a la izquierda como en la foto
+              var favoritePackages by remember { mutableStateOf(prefs.getStringSet("favorites", null)?.toSet() ?: emptySet()) }
+              var apps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+              var searchQuery by remember { mutableStateOf("") }
+              var isSearching by remember { mutableStateOf(false) }
+
+              var activeChar by remember { mutableStateOf('★') }
+              var activeWaveIndex by remember { mutableStateOf<Int?>(null) }
+              var touchY by remember { mutableStateOf<Float?>(null) }
+              var containerSize by remember { mutableStateOf(IntSize(1080, 2400)) }
+
+              val listState = rememberLazyListState()
+              var currentTime by remember { mutableStateOf("09:41") }
+              var batteryLevel by remember { mutableStateOf(84) }
+              var hourFloat by remember { mutableStateOf(9.68f) }
+              var minuteFloat by remember { mutableStateOf(41f) }
+
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      val now = Date()
+                      val cal = Calendar.getInstance()
+                      currentTime = DateFormat.format("HH:mm", now).toString()
+                      hourFloat = (cal.get(Calendar.HOUR) + cal.get(Calendar.MINUTE) / 60f)
+                      minuteFloat = cal.get(Calendar.MINUTE).toFloat()
+                      batteryLevel = getBatteryPercentage(context)
+                      delay(1000L)
+                  }
+              }
+
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val pm = context.packageManager
+                      val mainIntent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+                      val loadedApps = pm.queryIntentActivities(mainIntent, 0).mapNotNull { ri ->
+                          val pkg = ri.activityInfo.packageName
+                          if (pkg == context.packageName) return@mapNotNull null
+                          val label = ri.loadLabel(pm)?.toString()?.trim() ?: pkg
+                          val firstChar = if (label.isNotEmpty()) label[0].uppercaseChar() else '#'
+                          val initial = if (firstChar in 'A'..'Z') firstChar else '#'
+                          AppItem(label, pkg, drawableToBitmap(ri.loadIcon(pm)), initial)
+                      }.sortedBy { it.label.lowercase() }
+
+                      withContext(Dispatchers.Main) {
+                          apps = loadedApps
+                          if (favoritePackages.isEmpty() && loadedApps.isNotEmpty()) {
+                              val defaultFavs = loadedApps.take(5).map { it.packageName }.toSet()
+                              favoritePackages = defaultFavs
+                              prefs.edit().putStringSet("favorites", defaultFavs).apply()
+                          }
+                      }
+                  }
+              }
+
+              val primaryTextColor = Color(0xFFE2E8F0)
+              val accentColor = Color(0xFFD4AF37) // Dorado lince como en la foto
+              val dialogBgColor = Color(0xFF14191F)
+
+              val favoriteApps = remember(apps, favoritePackages) { favoritePackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } } }
+              val displayedApps = remember(apps, favoriteApps, searchQuery, isSearching, activeChar) {
+                  when {
+                      isSearching && searchQuery.isNotBlank() -> apps.filter { it.label.contains(searchQuery.trim(), ignoreCase = true) }
+                      isSearching -> apps
+                      activeChar == '★' -> favoriteApps
+                      else -> apps.filter { it.initial == activeChar }.ifEmpty { apps }
+                  }
+              }
+
+              val w = containerSize.width.toFloat().coerceAtLeast(1f)
+              val h = containerSize.height.toFloat().coerceAtLeast(1f)
+              val topWaveY = h * 0.28f
+              val bottomWaveY = h * 0.85f
+
+              val wavePoints = remember(containerSize, touchY, waveOnLeft) {
+                  val safeTotal = (LINCE_INDEX.size - 1).coerceAtLeast(1)
+                  val maxShift = with(density) { 50.dp.toPx() }
+                  val rad = with(density) { 100.dp.toPx() }
+                  LINCE_INDEX.indices.map { i ->
+                      val t = i.toFloat() / safeTotal.toFloat()
+                      val baseY = topWaveY + t * (bottomWaveY - topWaveY)
+                      val baseX = if (waveOnLeft) with(density) { 28.dp.toPx() } else w - with(density) { 28.dp.toPx() }
+                      val shift = touchY?.let { ty ->
+                          val d = abs(baseY - ty)
+                          if (d < rad) ((1f + cos((d / rad) * PI.toFloat())) / 2f) * maxShift else 0f
+                      } ?: 0f
+                      Offset(if (waveOnLeft) baseX + shift else baseX - shift, baseY)
+                  }
+              }
+
+              fun handleWaveTouch(yPos: Float) {
+                  touchY = yPos
+                  val clampedY = yPos.coerceIn(topWaveY, bottomWaveY)
+                  val idx = (((clampedY - topWaveY) / (bottomWaveY - topWaveY).coerceAtLeast(1f)) * (LINCE_INDEX.size - 1)).roundToInt().coerceIn(0, LINCE_INDEX.size - 1)
+                  if (activeWaveIndex != idx) {
+                      activeWaveIndex = idx
+                      activeChar = LINCE_INDEX[idx]
+                      isSearching = false
+                      searchQuery = ""
+                      view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                  }
+              }
+
+              Box(
+                  modifier = Modifier.fillMaxSize().onSizeChanged { containerSize = it }
+                      .pointerInput(Unit) {
+                          var dy = 0f
+                          detectVerticalDragGestures(
+                              onDragStart = { dy = 0f },
+                              onVerticalDrag = { _, d -> dy += d },
+                              onDragEnd = {
+                                  if (dy < -90f && !isSearching) isSearching = true
+                                  else if (dy > 90f && !isSearching) expandStatusBar(context)
+                              }
+                          )
+                      }
+              ) {
+                  // FONDOS DE PANTALLA EXACTO AL DE LA IMAGEN (Fondo oscuro forestal + Lince de perfil a la derecha)
+                  Canvas(modifier = Modifier.fillMaxSize()) {
+                      val cw = size.width
+                      val ch = size.height
+
+                      // Fondo verde oscuro / grisáceo bosque nocturno
+                      drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF131A19), Color(0xFF0A0F0E), Color(0xFF050807))))
+
+                      // Ilustración detallada del Lince Ibérico de perfil mirando a la izquierda (como en la foto)
+                      val ox = cw * 0.42f
+                      val oy = ch * 0.22f
+                      val sz = cw * 0.58f
+
+                      // Cuerpo y cabeza oscura con tonalidades ocre y sutiles motas
+                      val headPath = Path().apply {
+                          moveTo(ox + sz * 0.2f, oy + sz * 0.7f)
+                          quadraticBezierTo(ox + sz * 0.1f, oy + sz * 0.4f, ox + sz * 0.25f, oy + sz * 0.25f)
+                          lineTo(ox + sz * 0.32f, oy + sz * 0.05f) // Oreja 1
+                          lineTo(ox + sz * 0.42f, oy + sz * 0.18f)
+                          lineTo(ox + sz * 0.55f, oy + sz * 0.02f) // Oreja 2
+                          lineTo(ox + sz * 0.65f, oy + sz * 0.20f)
+                          quadraticBezierTo(ox + sz * 0.75f, oy + sz * 0.35f, ox + sz * 0.78f, oy + sz * 0.48f) // Hocico
+                          lineTo(ox + sz * 0.60f, oy + sz * 0.65f)
+                          close()
+                      }
+                      drawPath(headPath, Color(0xFF141C1A))
+                      drawPath(headPath, Color(0xFFD4AF37).copy(alpha = 0.25f), style = Stroke(width = 2.5f))
+
+                      // Pinceles negros en las puntas de las orejas
+                      drawLine(Color.Black, Offset(ox + sz * 0.32f, oy + sz * 0.05f), Offset(ox + sz * 0.30f, oy - sz * 0.06f), strokeWidth = 6f, cap = StrokeCap.Round)
+                      drawLine(Color.Black, Offset(ox + sz * 0.55f, oy + sz * 0.02f), Offset(ox + sz * 0.56f, oy - sz * 0.08f), strokeWidth = 6f, cap = StrokeCap.Round)
+
+                      // Ojo penetrante color ámbar / dorado con brillo
+                      val eyeCenter = Offset(ox + sz * 0.52f, oy + sz * 0.35f)
+                      drawCircle(Color(0xFF0A0F0E), radius = 14f, center = eyeCenter)
+                      drawCircle(Color(0xFFD4AF37), radius = 10f, center = eyeCenter)
+                      drawCircle(Color.Black, radius = 4f, center = eyeCenter)
+                      drawCircle(Color.White, radius = 2f, center = eyeCenter + Offset(-3f, -3f))
+                  }
+
+                  // CONTENIDO CENTRAL (Reloj analógico Lince, hora 09:41 y clima de la foto)
+                  Column(
+                      modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                          .padding(start = 72.dp, end = 24.dp, top = 16.dp, bottom = 12.dp)
+                  ) {
+                      // RELOJ ANALÓGICO OREJAS DE LINCE (Exacto a la imagen)
+                      Box(
+                          modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                          contentAlignment = Alignment.CenterStart
+                      ) {
+                          Canvas(modifier = Modifier.size(110.dp)) {
+                              val center = Offset(size.width / 2f, size.height / 2f)
+                              val r = size.width / 2f
+                              drawCircle(Color(0x22FFFFFF), radius = r)
+                              drawCircle(Color(0xFFD4AF37), radius = r, style = Stroke(width = 2.dp.toPx()))
+
+                              // Silueta de orejas de lince en el reloj
+                              val clockEars = Path().apply {
+                                  moveTo(center.x - 22f, center.y - 10f); lineTo(center.x - 38f, center.y - r * 0.8f); lineTo(center.x - 8f, center.y - 16f)
+                                  moveTo(center.x + 22f, center.y - 10f); lineTo(center.x + 38f, center.y - r * 0.8f); lineTo(center.x + 8f, center.y - 16f)
+                              }
+                              drawPath(clockEars, Color(0xFFD4AF37).copy(alpha = 0.6f), style = Stroke(width = 1.5.dp.toPx()))
+
+                              val hAng = ((hourFloat % 12f) * 30f - 90f) * (PI.toFloat() / 180f)
+                              val mAng = (minuteFloat * 6f - 90f) * (PI.toFloat() / 180f)
+                              drawLine(Color(0xFFD4AF37), center, Offset(center.x + cos(hAng) * (r * 0.48f), center.y + sin(hAng) * (r * 0.48f)), strokeWidth = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                              drawLine(Color.White, center, Offset(center.x + cos(mAng) * (r * 0.70f), center.y + sin(mAng) * (r * 0.70f)), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                              drawCircle(Color(0xFFD4AF37), radius = 3.5.dp.toPx(), center = center)
+                          }
+                      }
+
+                      // HORA DIGITAL (09:41 como en la foto)
+                      Text(
+                          text = currentTime,
+                          color = Color.White,
+                          fontSize = 52.sp,
+                          fontWeight = FontWeight.Light,
+                          letterSpacing = (-1).sp
+                      )
+
+                      // CLIMA Y FECHA EXACTOS DE LA FOTO (18°C Enebro Forest • Miércoles, 23 Octubre)
+                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)) {
+                          Text(text = "☀ 18°C", color = primaryTextColor, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                          Text(text = "  Enebro Forest", color = primaryTextColor.copy(alpha = 0.8f), fontSize = 13.sp)
+                      }
+                      Text(
+                          text = "Miércoles, 23 Octubre",
+                          color = primaryTextColor.copy(alpha = 0.75f),
+                          fontSize = 13.sp,
+                          fontWeight = FontWeight.Medium
+                      )
+
+                      Spacer(modifier = Modifier.height(18.dp))
+
+                      // CABECERA "Favorites"
+                      Text(
+                          text = "Favorites",
+                          color = primaryTextColor.copy(alpha = 0.7f),
+                          fontSize = 13.sp,
+                          fontWeight = FontWeight.Bold,
+                          letterSpacing = 1.sp,
+                          modifier = Modifier.padding(bottom = 6.dp)
+                      )
+
+                      if (isSearching) {
+                          Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                              Icon(Icons.Default.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                              Spacer(modifier = Modifier.width(8.dp))
+                              BasicTextField(
+                                  value = searchQuery,
+                                  onValueChange = { searchQuery = it },
+                                  singleLine = true,
+                                  textStyle = TextStyle(color = Color.Black, fontSize = 15.sp),
+                                  modifier = Modifier.weight(1f),
+                                  decorationBox = { inner -> if (searchQuery.isEmpty()) Text("Buscar app...", color = Color.Gray); inner() }
+                              )
+                              IconButton(onClick = { searchQuery = ""; isSearching = false }, modifier = Modifier.size(20.dp)) {
+                                  Icon(Icons.Default.Close, contentDescription = null, tint = Color.Black)
+                              }
+                          }
+                          Spacer(modifier = Modifier.height(8.dp))
+                      }
+
+                      // LISTA DE APLICACIONES (FAVORITOS DE LA FOTO: Lince, Mensajes, Navegador, Galería, Configuración)
+                      LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 80.dp)) {
+                          items(displayedApps.size) { i ->
+                              val app = displayedApps[i]
+                              Row(
+                                  modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                      .pointerInput(app.packageName) { detectTapGestures(onTap = { launchApp(context, app.packageName) }, onLongPress = { selectedAppForMenu = app }) }
+                                      .padding(horizontal = 4.dp, vertical = 8.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  if (app.icon != null) {
+                                      Image(bitmap = app.icon.asImageBitmap(), contentDescription = null, modifier = Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
+                                  } else {
+                                      Box(modifier = Modifier.size(36.dp).background(accentColor.copy(alpha = 0.2f), CircleShape), contentAlignment = Alignment.Center) {
+                                          Text(app.initial.toString(), color = accentColor, fontWeight = FontWeight.Bold)
+                                      }
+                                  }
+                                  Spacer(modifier = Modifier.width(14.dp))
+                                  Text(
+                                      text = app.label,
+                                      color = primaryTextColor,
+                                      fontSize = 16.sp,
+                                      fontWeight = FontWeight.Medium,
+                                      maxLines = 1,
+                                      overflow = TextOverflow.Ellipsis
+                                  )
+                              }
+                          }
+                      }
+                  }
+
+                  // BARRA ALFABÉTICA LATERAL IZQUIERDA EXACTA A LA FOTO (WAVE A-Z #)
+                  Box(
+                      modifier = Modifier.fillMaxHeight().width(64.dp).align(Alignment.CenterStart)
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectTapGestures(onPress = { off -> handleWaveTouch(off.y); tryAwaitRelease(); touchY = null; activeWaveIndex = null })
+                          }
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectDragGestures(
+                                  onDragStart = { off -> handleWaveTouch(off.y) },
+                                  onDrag = { chg, _ -> chg.consume(); handleWaveTouch(chg.position.y) },
+                                  onDragEnd = { touchY = null; activeWaveIndex = null },
+                                  onDragCancel = { touchY = null; activeWaveIndex = null }
+                              )
+                          }
+                  ) {}
+
+                  wavePoints.forEachIndexed { index, pt ->
+                      val char = LINCE_INDEX[index]
+                      val isSel = activeWaveIndex == index
+                      val boxPx = with(density) { 20.dp.toPx() }
+                      Box(
+                          modifier = Modifier.offset { IntOffset((pt.x - boxPx / 2f).roundToInt(), (pt.y - boxPx / 2f).roundToInt()) }.size(20.dp).scale(if (isSel) 1.5f else 1f).alpha(0.85f),
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Text(char.toString(), color = if (isSel) accentColor else primaryTextColor.copy(alpha = 0.8f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                      }
+                  }
+
+                  // HUELLA DE LINCE FLOTANTE EN LA ESQUINAS INFERIOR DERECHA (Igual que en la foto)
+                  Box(
+                      modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = 18.dp).size(48.dp).clip(CircleShape).background(accentColor.copy(alpha = 0.25f)).border(1.dp, accentColor, CircleShape)
+                          .pointerInput(Unit) { detectTapGestures(onTap = { selectedAppForMenu = apps.firstOrNull() }) },
+                      contentAlignment = Alignment.Center
+                  ) {
+                      Text("🐾", fontSize = 18.sp)
+                  }
+
+                  // TEXTO INFERIOR "Lince Ibérico" (Como en la foto)
+                  Box(modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp)) {
+                      Text("Lince Ibérico", color = primaryTextColor.copy(alpha = 0.6f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                  }
+
+                  selectedAppForMenu?.let { app ->
+                      AlertDialog(
+                          onDismissRequest = { selectedAppForMenu = null },
+                          containerColor = dialogBgColor,
+                          title = { Text(app.label, color = Color.White, fontWeight = FontWeight.Bold) },
+                          text = {
+                              Column {
+                                  TextButton(onClick = {
+                                      context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.fromParts("package", app.packageName, null); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                      selectedAppForMenu = null
+                                  }) { Text("ℹ Información de la aplicación", color = Color.White) }
+                                  TextButton(onClick = {
+                                      context.startActivity(Intent(Intent.ACTION_DELETE).apply { data = Uri.parse("package:${app.packageName}"); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                      selectedAppForMenu = null
+                                  }) { Text("🗑 Desinstalar", color = Color(0xFFFF5252)) }
+                              }
+                          },
+                          confirmButton = { TextButton(onClick = { selectedAppForMenu = null }) { Text("Cerrar", color = Color.Gray) } }
+                      )
+                  }
+              }
+          }
+
+          fun launchApp(context: Context, packageName: String) {
+              context.packageManager.getLaunchIntentForPackage(packageName)?.let {
+                  it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  context.startActivity(it)
+              }
+          }
+
+          fun drawableToBitmap(drawable: Drawable): Bitmap {
+              if (drawable is BitmapDrawable && drawable.bitmap != null) return drawable.bitmap
+              val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+              val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+              val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+              val canvas = AndroidCanvas(bmp)
+              drawable.setBounds(0, 0, canvas.width, canvas.height)
+              drawable.draw(canvas)
+              return bmp
+          }
+          EOF
+          sed -i 's/^          //' app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+
+          gradle assembleDebug --no-daemon
+
+      - name: 5. Publicar APK en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v11.3.${{ github.run_number }}
+          name: "Lince Ibérico Niagara v11.3.${{ github.run_number }}"
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
