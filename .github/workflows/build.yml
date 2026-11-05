@@ -1,0 +1,2687 @@
+name: Compilar APK Directo
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Leer archivos
+        uses: actions/checkout@v4
+
+      - name: 2. Activar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Instalar Gradle 8.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 4. Construir Lince Iberico y Egipto Launcher v7.0
+        run: |
+          rm -rf app build .gradle local.properties settings.gradle* build.gradle* gradle.properties MainActivity.kt
+          mkdir -p app/src/main/java/com/atenea/pixelultralauncher
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF
+          sed -i 's/^[[:space:]]*//' gradle.properties
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "LinceIbericoLauncher"
+          include(":app")
+          EOF
+          sed -i 's/^          //' settings.gradle.kts
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          sed -i 's/^          //' build.gradle.kts
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.atenea.pixelultralauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.atenea.pixelultralauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 7
+                  versionName = "7.0-Lince-Egipto"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          sed -i 's/^          //' app/build.gradle.kts
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+              <application
+                  android:label="Lince Ibérico"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          sed -i 's/^          //' app/src/main/AndroidManifest.xml
+
+          cat << 'EOF' > app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+          package com.atenea.pixelultralauncher
+
+          import android.content.Context
+          import android.content.Intent
+          import android.content.IntentFilter
+          import android.graphics.Bitmap
+          import android.graphics.BitmapFactory
+          import android.graphics.Canvas as AndroidCanvas
+          import android.graphics.drawable.BitmapDrawable
+          import android.graphics.drawable.Drawable
+          import android.net.Uri
+          import android.os.BatteryManager
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.text.format.DateFormat
+          import android.view.HapticFeedbackConstants
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectDragGestures
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.PaddingValues
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.navigationBarsPadding
+          import androidx.compose.foundation.layout.offset
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.statusBarsPadding
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.ArrowBack
+          import androidx.compose.material.icons.filled.Check
+          import androidx.compose.material.icons.filled.Close
+          import androidx.compose.material.icons.filled.Delete
+          import androidx.compose.material.icons.filled.Edit
+          import androidx.compose.material.icons.filled.Info
+          import androidx.compose.material.icons.filled.Search
+          import androidx.compose.material.icons.filled.Settings
+          import androidx.compose.material.icons.filled.Star
+          import androidx.compose.material3.AlertDialog
+          import androidx.compose.material3.Button
+          import androidx.compose.material3.ButtonDefaults
+          import androidx.compose.material3.Checkbox
+          import androidx.compose.material3.CheckboxDefaults
+          import androidx.compose.material3.Divider
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.IconButton
+          import androidx.compose.material3.Slider
+          import androidx.compose.material3.SliderDefaults
+          import androidx.compose.material3.Switch
+          import androidx.compose.material3.Text
+          import androidx.compose.material3.TextButton
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.scale
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.geometry.Size
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.ColorFilter
+          import androidx.compose.ui.graphics.ColorMatrix
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.graphics.StrokeCap
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.drawscope.DrawScope
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalView
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.IntSize
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.view.WindowCompat
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import java.io.File
+          import java.io.FileOutputStream
+          import java.util.Calendar
+          import java.util.Date
+          import kotlin.math.PI
+          import kotlin.math.abs
+          import kotlin.math.cos
+          import kotlin.math.roundToInt
+          import kotlin.math.sin
+
+          data class AppItem(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap?,
+              val initial: Char
+          )
+
+          data class LinceThemePreset(
+              val id: String,
+              val title: String,
+              val subtitle: String,
+              val wallpaper: String,
+              val iconPack: String,
+              val textColor: String,
+              val clockStyle: Int,
+              val linceClockStyle: Int,
+              val hideAlphabet: Boolean,
+              val previewColor: Color
+          )
+
+          val LINCE_THEME_PRESETS = listOf(
+              LinceThemePreset(
+                  id = "egipto_nilo_piramides",
+                  title = "Misterios del Nilo y Pirámides (Egipto)",
+                  subtitle = "Pirámides de Giza y Río Nilo • Iconos Oro Faraónico • Reloj Solar de Ra",
+                  wallpaper = "nilo_piramides",
+                  iconPack = "gold_pharaoh",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 4,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFFD4AF37)
+              ),
+              LinceThemePreset(
+                  id = "egipto_noche_faraonica",
+                  title = "Noche Faraónica en el Nilo (Egipto)",
+                  subtitle = "Cielo lapislázuli estrellado • Pirámides doradas • Cartucho Real Egipcio",
+                  wallpaper = "noche_faraonica",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 5,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF1E3A8A)
+              ),
+              LinceThemePreset(
+                  id = "lince_andujar",
+                  title = "Acecho en la Sierra (Lince Ibérico)",
+                  subtitle = "Fondo bosque nocturno de lince • Iconos Simply White • Reloj Orejas de Lince",
+                  wallpaper = "sierra_andujar",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 1,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF1E3A1A)
+              ),
+              LinceThemePreset(
+                  id = "lince_donana",
+                  title = "Ocaso en Doñana (Lince Ibérico)",
+                  subtitle = "Atardecer ocre silvestre • Iconos Contorno Ámbar • Reloj Mirada Salvaje",
+                  wallpaper = "ocaso_donana",
+                  iconPack = "neon_cyan",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 3,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF7C2D12)
+              ),
+              LinceThemePreset(
+                  id = "lince_noche_oled",
+                  title = "Mirada Nocturna OLED (Lince)",
+                  subtitle = "Fondo negro 100% con ojos dorados acechando • Reloj Huella Salvaje",
+                  wallpaper = "mirada_oled",
+                  iconPack = "white_minimal",
+                  textColor = "light",
+                  clockStyle = 0,
+                  linceClockStyle = 2,
+                  hideAlphabet = true,
+                  previewColor = Color(0xFF0D0D0D)
+              ),
+              LinceThemePreset(
+                  id = "lince_original_preset",
+                  title = "Lince Ibérico Clásico",
+                  subtitle = "Fondo bosque de Andújar • Iconos originales • Reloj nativo grande",
+                  wallpaper = "sierra_andujar",
+                  iconPack = "default",
+                  textColor = "light",
+                  clockStyle = 1,
+                  linceClockStyle = 0,
+                  hideAlphabet = false,
+                  previewColor = Color(0xFF854D0E)
+              )
+          )
+
+          val LINCE_INDEX: List<Char> = listOf('★') + ('A'..'Z').toList() + listOf('#')
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  WindowCompat.setDecorFitsSystemWindows(window, false)
+                  setContent {
+                      LinceIbericoLauncher()
+                  }
+              }
+          }
+
+          fun expandStatusBar(context: Context) {
+              try {
+                  val service = context.getSystemService("statusbar")
+                  val statusbarManager = Class.forName("android.app.StatusBarManager")
+                  val expand = statusbarManager.getMethod("expandNotificationsPanel")
+                  expand.invoke(service)
+              } catch (_: Exception) {}
+          }
+
+          fun getBatteryPercentage(context: Context): Int {
+              return try {
+                  val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                  val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                  val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                  if (level >= 0 && scale > 0) (level * 100) / scale else 100
+              } catch (_: Exception) {
+                  100
+              }
+          }
+
+          @Composable
+          fun LinceIbericoLauncher() {
+              val context = LocalContext.current
+              val view = LocalView.current
+              val density = LocalDensity.current
+              val prefs = remember { context.getSharedPreferences("lince_iberico_v7_prefs", Context.MODE_PRIVATE) }
+
+              val isFirstRun = remember { prefs.getBoolean("first_run_v7", true) }
+              var currentScreen by remember {
+                  mutableStateOf(if (isFirstRun) "WELCOME" else "HOME")
+              }
+
+              // Por defecto arranca con el nuevo tema del Nilo y la Pirámide Egipcia (puedes cambiarlo en Temas)
+              var wallpaperStyle by remember {
+                  mutableStateOf(prefs.getString("wallpaper_style", "nilo_piramides") ?: "nilo_piramides")
+              }
+              var customWallpaperBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val customFile = File(context.filesDir, "custom_lince_wallpaper.jpg")
+                      if (customFile.exists()) {
+                          val bmp = BitmapFactory.decodeFile(customFile.absolutePath)
+                          withContext(Dispatchers.Main) {
+                              customWallpaperBitmap = bmp
+                          }
+                      }
+                  }
+              }
+
+              val galleryLauncher = rememberLauncherForActivityResult(
+                  contract = ActivityResultContracts.GetContent()
+              ) { uri: Uri? ->
+                  if (uri != null) {
+                      try {
+                          val inputStream = context.contentResolver.openInputStream(uri)
+                          val bmp = BitmapFactory.decodeStream(inputStream)
+                          inputStream?.close()
+                          if (bmp != null) {
+                              customWallpaperBitmap = bmp
+                              wallpaperStyle = "custom_gallery"
+                              prefs.edit().putString("wallpaper_style", "custom_gallery").apply()
+                              val outFile = File(context.filesDir, "custom_lince_wallpaper.jpg")
+                              FileOutputStream(outFile).use { out ->
+                                  bmp.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                              }
+                          }
+                      } catch (_: Exception) {}
+                  }
+              }
+
+              var iconPackMode by remember {
+                  mutableStateOf(prefs.getString("icon_pack", "gold_pharaoh") ?: "gold_pharaoh")
+              }
+              var textColorMode by remember {
+                  mutableStateOf(prefs.getString("text_color_mode", "light") ?: "light")
+              }
+              var fontMode by remember {
+                  mutableStateOf(prefs.getString("font_mode", "serif") ?: "serif")
+              }
+              var clockStyle by remember {
+                  mutableStateOf(prefs.getInt("clock_style", 0))
+              }
+              var showCalendarDate by remember {
+                  mutableStateOf(prefs.getBoolean("show_date", true))
+              }
+              var showWeather by remember {
+                  mutableStateOf(prefs.getBoolean("show_weather", true))
+              }
+              var showBattery by remember {
+                  mutableStateOf(prefs.getBoolean("show_battery", true))
+              }
+              // 1=Orejas Lince, 2=Huella Lince, 3=Mirada Doñana, 4=Reloj Solar Egipcio de Ra, 5=Cartucho Faraónico
+              var linceClockStyle by remember {
+                  mutableStateOf(prefs.getInt("lince_clock_style", 4))
+              }
+              var hideAlphabet by remember {
+                  mutableStateOf(prefs.getBoolean("hide_alphabet", false))
+              }
+              var hideFavoriteNames by remember {
+                  mutableStateOf(prefs.getBoolean("hide_fav_names", false))
+              }
+              var showLinceButton by remember {
+                  mutableStateOf(prefs.getBoolean("show_lince_btn", true))
+              }
+              var waveOnLeft by remember {
+                  mutableStateOf(prefs.getBoolean("wave_left", false))
+              }
+              var iconSizeDp by remember {
+                  mutableStateOf(prefs.getFloat("icon_size", 44f))
+              }
+              var verticalOffsetDp by remember {
+                  mutableStateOf(prefs.getFloat("vertical_offset", 20f))
+              }
+              var isMovingWidgetMode by remember { mutableStateOf(false) }
+
+              var favoritePackages by remember {
+                  val saved = prefs.getStringSet("favorites", null)
+                  mutableStateOf(saved?.toSet() ?: emptySet<String>())
+              }
+
+              var apps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+              var searchQuery by remember { mutableStateOf("") }
+              var favSearchQuery by remember { mutableStateOf("") }
+              var isSearching by remember { mutableStateOf(false) }
+
+              var showLinceWidgetSheet by remember { mutableStateOf(false) }
+              var showLinceClockPicker by remember { mutableStateOf(false) }
+              var selectedAppForMenu by remember { mutableStateOf<AppItem?>(null) }
+
+              var activeChar by remember { mutableStateOf<Char>('★') }
+              var activeWaveIndex by remember { mutableStateOf<Int?>(null) }
+              var touchY by remember { mutableStateOf<Float?>(null) }
+              var containerSize by remember { mutableStateOf(IntSize(1080, 2400)) }
+
+              val listState = rememberLazyListState()
+
+              var currentTime by remember { mutableStateOf("") }
+              var currentDateShort by remember { mutableStateOf("") }
+              var currentDayName by remember { mutableStateOf("JUEVES") }
+              var currentDayNumber by remember { mutableStateOf("05") }
+              var batteryLevel by remember { mutableStateOf(100) }
+              var hourFloat by remember { mutableStateOf(10f) }
+              var minuteFloat by remember { mutableStateOf(10f) }
+
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      val now = Date()
+                      val cal = Calendar.getInstance()
+                      currentTime = DateFormat.format("HH:mm", now).toString()
+                      currentDateShort = DateFormat.format("EEE, d MMM", now).toString()
+                      currentDayName = DateFormat.format("EEEE", now).toString().uppercase()
+                      currentDayNumber = DateFormat.format("dd", now).toString()
+                      hourFloat = (cal.get(Calendar.HOUR) + cal.get(Calendar.MINUTE) / 60f)
+                      minuteFloat = cal.get(Calendar.MINUTE).toFloat()
+                      batteryLevel = getBatteryPercentage(context)
+                      delay(1000L)
+                  }
+              }
+
+              LaunchedEffect(Unit) {
+                  withContext(Dispatchers.IO) {
+                      val pm = context.packageManager
+                      val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                          addCategory(Intent.CATEGORY_LAUNCHER)
+                      }
+                      val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+                      val loadedApps = resolveInfos.mapNotNull { ri ->
+                          val pkg = ri.activityInfo.packageName
+                          if (pkg == context.packageName) return@mapNotNull null
+                          val label = ri.loadLabel(pm)?.toString()?.trim() ?: pkg
+                          val firstChar = if (label.isNotEmpty()) label[0].uppercaseChar() else '#'
+                          val initial = if (firstChar in 'A'..'Z') firstChar else '#'
+                          val drawable = ri.loadIcon(pm)
+                          AppItem(
+                              label = label,
+                              packageName = pkg,
+                              icon = drawableToBitmap(drawable),
+                              initial = initial
+                          )
+                      }.sortedBy { it.label.lowercase() }
+
+                      withContext(Dispatchers.Main) {
+                          apps = loadedApps
+                          if (favoritePackages.isEmpty() && loadedApps.isNotEmpty()) {
+                              val defaultFavs = loadedApps.take(6).map { it.packageName }.toSet()
+                              favoritePackages = defaultFavs
+                              prefs.edit().putStringSet("favorites", defaultFavs).apply()
+                          }
+                      }
+                  }
+              }
+
+              val appFontFamily = remember(fontMode) {
+                  when (fontMode) {
+                      "serif" -> FontFamily.Serif
+                      "mono" -> FontFamily.Monospace
+                      else -> FontFamily.SansSerif
+                  }
+              }
+
+              val isDarkText = textColorMode == "dark"
+              val isEgyptianTheme = wallpaperStyle == "nilo_piramides" || wallpaperStyle == "noche_faraonica"
+
+              val primaryTextColor = when {
+                  isDarkText -> Color(0xFF1C1917)
+                  isEgyptianTheme -> Color(0xFFFEF9C3)
+                  else -> Color(0xFFFEF08A)
+              }
+              val secondaryTextColor = when {
+                  isDarkText -> Color(0xFF78350F)
+                  isEgyptianTheme -> Color(0xFFEAB308)
+                  else -> Color(0xFFCA8A04)
+              }
+              val accentColor = if (isEgyptianTheme) Color(0xFFFFD700) else Color(0xFFF59E0B)
+              val dialogBgColor = Color(0xFF181311)
+
+              fun applyThemePreset(preset: LinceThemePreset) {
+                  wallpaperStyle = preset.wallpaper
+                  iconPackMode = preset.iconPack
+                  textColorMode = preset.textColor
+                  clockStyle = preset.clockStyle
+                  linceClockStyle = preset.linceClockStyle
+                  hideAlphabet = preset.hideAlphabet
+                  showCalendarDate = true
+                  prefs.edit()
+                      .putString("wallpaper_style", wallpaperStyle)
+                      .putString("icon_pack", iconPackMode)
+                      .putString("text_color_mode", textColorMode)
+                      .putInt("clock_style", clockStyle)
+                      .putInt("lince_clock_style", linceClockStyle)
+                      .putBoolean("hide_alphabet", hideAlphabet)
+                      .putBoolean("show_date", showCalendarDate)
+                      .apply()
+              }
+
+              // =========================================================================
+              // PANTALLA 1: BIENVENIDA
+              // =========================================================================
+              if (currentScreen == "WELCOME") {
+                  Box(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(
+                              Brush.verticalGradient(
+                                  colors = listOf(Color(0xFF271C19), Color(0xFF140D0B))
+                              )
+                          )
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .padding(28.dp)
+                  ) {
+                      Column(
+                          modifier = Modifier.fillMaxSize(),
+                          verticalArrangement = Arrangement.SpaceBetween
+                      ) {
+                          Spacer(modifier = Modifier.height(20.dp))
+                          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                              Text(
+                                  text = "Lince Ibérico & Egipto",
+                                  color = accentColor,
+                                  fontSize = 30.sp,
+                                  fontWeight = FontWeight.Bold,
+                                  letterSpacing = 1.sp
+                              )
+                              Spacer(modifier = Modifier.height(18.dp))
+                              Text(
+                                  text = "Naturaleza salvaje ibérica y los misterios del Nilo y las Pirámides en tu pantalla.",
+                                  color = Color.White,
+                                  fontSize = 21.sp,
+                                  fontWeight = FontWeight.SemiBold,
+                                  lineHeight = 28.sp
+                              )
+                              Spacer(modifier = Modifier.height(14.dp))
+                              Text(
+                                  text = "Elige tus aplicaciones favoritas para el inicio y personaliza al instante entre los temas del Lince Ibérico y el Antiguo Egipto.",
+                                  color = Color.White.copy(alpha = 0.78f),
+                                  fontSize = 15.sp,
+                                  lineHeight = 22.sp
+                              )
+                          }
+                          Button(
+                              onClick = { currentScreen = "FAVORITES" },
+                              colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                              shape = RoundedCornerShape(28.dp),
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .height(56.dp)
+                          ) {
+                              Text("Elegir aplicaciones favoritas  🐾 ☥", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 2: SELECTOR DE FAVORITOS
+              // =========================================================================
+              if (currentScreen == "FAVORITES") {
+                  val filteredForPicker = remember(apps, favSearchQuery) {
+                      if (favSearchQuery.isBlank()) apps
+                      else apps.filter { it.label.contains(favSearchQuery.trim(), ignoreCase = true) }
+                  }
+
+                  Box(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF140D0B))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                  ) {
+                      Column(modifier = Modifier.fillMaxSize()) {
+                          Column(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .background(Color(0xFF271C19))
+                                  .padding(horizontal = 20.dp, vertical = 18.dp)
+                          ) {
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Text(
+                                      text = "Tus Favoritos",
+                                      color = accentColor,
+                                      fontSize = 24.sp,
+                                      fontWeight = FontWeight.Bold
+                                  )
+                                  Box(
+                                      modifier = Modifier
+                                          .clip(RoundedCornerShape(16.dp))
+                                          .background(accentColor.copy(alpha = 0.2f))
+                                          .padding(horizontal = 12.dp, vertical = 6.dp)
+                                  ) {
+                                      Text(
+                                          text = "${favoritePackages.size} marcadas",
+                                          color = accentColor,
+                                          fontSize = 12.sp,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+                              }
+                              Spacer(modifier = Modifier.height(6.dp))
+                              Text(
+                                  text = "Marca las aplicaciones que mantendrás fijas en la pantalla principal (4 a 8 recomendadas).",
+                                  color = Color.White.copy(alpha = 0.78f),
+                                  fontSize = 13.sp
+                              )
+                              Spacer(modifier = Modifier.height(12.dp))
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .clip(RoundedCornerShape(20.dp))
+                                      .background(Color.White.copy(alpha = 0.14f))
+                                      .padding(horizontal = 14.dp, vertical = 10.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                  Spacer(modifier = Modifier.width(8.dp))
+                                  BasicTextField(
+                                      value = favSearchQuery,
+                                      onValueChange = { favSearchQuery = it },
+                                      singleLine = true,
+                                      textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                                      cursorBrush = SolidColor(Color.White),
+                                      modifier = Modifier.weight(1f),
+                                      decorationBox = { inner ->
+                                          if (favSearchQuery.isEmpty()) {
+                                              Text("Buscar aplicación...", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                                          }
+                                          inner()
+                                      }
+                                  )
+                                  if (favSearchQuery.isNotEmpty()) {
+                                      Icon(
+                                          imageVector = Icons.Default.Close,
+                                          contentDescription = null,
+                                          tint = Color.White,
+                                          modifier = Modifier
+                                              .size(18.dp)
+                                              .clickable { favSearchQuery = "" }
+                                      )
+                                  }
+                              }
+                          }
+
+                          LazyColumn(
+                              modifier = Modifier.weight(1f),
+                              contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                              verticalArrangement = Arrangement.spacedBy(4.dp)
+                          ) {
+                              items(filteredForPicker, key = { "lince_fav_${it.packageName}" }) { app ->
+                                  val isChecked = app.packageName in favoritePackages
+                                  Row(
+                                      modifier = Modifier
+                                          .fillMaxWidth()
+                                          .clip(RoundedCornerShape(14.dp))
+                                          .background(if (isChecked) Color.White.copy(alpha = 0.08f) else Color.Transparent)
+                                          .clickable {
+                                              val updated = favoritePackages.toMutableSet()
+                                              if (isChecked) updated.remove(app.packageName) else updated.add(app.packageName)
+                                              favoritePackages = updated
+                                              prefs.edit().putStringSet("favorites", updated).apply()
+                                              view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                          }
+                                          .padding(horizontal = 12.dp, vertical = 10.dp),
+                                      verticalAlignment = Alignment.CenterVertically
+                                  ) {
+                                      Checkbox(
+                                          checked = isChecked,
+                                          onCheckedChange = {
+                                              val updated = favoritePackages.toMutableSet()
+                                              if (isChecked) updated.remove(app.packageName) else updated.add(app.packageName)
+                                              favoritePackages = updated
+                                              prefs.edit().putStringSet("favorites", updated).apply()
+                                          },
+                                          colors = CheckboxDefaults.colors(
+                                              checkedColor = accentColor,
+                                              uncheckedColor = Color.White.copy(alpha = 0.6f),
+                                              checkmarkColor = Color.Black
+                                          )
+                                      )
+                                      Spacer(modifier = Modifier.width(12.dp))
+                                      if (app.icon != null) {
+                                          Image(
+                                              bitmap = app.icon.asImageBitmap(),
+                                              contentDescription = null,
+                                              modifier = Modifier
+                                                  .size(38.dp)
+                                                  .clip(RoundedCornerShape(10.dp))
+                                          )
+                                      }
+                                      Spacer(modifier = Modifier.width(14.dp))
+                                      Text(
+                                          text = app.label,
+                                          color = Color.White,
+                                          fontSize = 16.sp,
+                                          fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal,
+                                          modifier = Modifier.weight(1f)
+                                      )
+                                  }
+                              }
+                          }
+
+                          Box(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .background(Color(0xFF140D0B))
+                                  .padding(16.dp)
+                          ) {
+                              Button(
+                                  onClick = {
+                                      prefs.edit().putBoolean("first_run_v7", false).apply()
+                                      currentScreen = "HOME"
+                                  },
+                                  colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                                  shape = RoundedCornerShape(28.dp),
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .height(54.dp)
+                              ) {
+                                  Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black)
+                                  Spacer(modifier = Modifier.width(8.dp))
+                                  Text("Guardar e ir al Inicio", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                              }
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 3: CONFIGURACIÓN GENERAL
+              // =========================================================================
+              if (currentScreen == "SETTINGS") {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF110D0C))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .verticalScroll(rememberScrollState())
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(12.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "HOME" }) {
+                              Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                          }
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text("Ajustes de Lince Ibérico", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      SettingsCardItem(
+                          title = "★  Editar favoritos (${favoritePackages.size} apps)",
+                          subtitle = "Elige con casillas las aplicaciones del inicio rápido",
+                          accent = accentColor,
+                          onClick = { currentScreen = "FAVORITES" }
+                      )
+
+                      SettingsCardItem(
+                          title = "☥  Galería de Temas (Egipto y Lince Ibérico)",
+                          subtitle = "Aplica en 1 toque el Nilo y las Pirámides, Noche Faraónica, Andújar o Doñana",
+                          accent = Color(0xFFFFD700),
+                          onClick = { currentScreen = "THEMES" }
+                      )
+
+                      SettingsCardItem(
+                          title = "🖼  Fondos de Pantalla (Nilo, Pirámides, Lince y Galería)",
+                          subtitle = "Cambia el fondo artístico o sube cualquier foto de tu teléfono",
+                          accent = Color(0xFF34D399),
+                          onClick = { currentScreen = "WALLPAPERS" }
+                      )
+
+                      SettingsCardItem(
+                          title = "🕒  Relojes Egipcios y del Lince Ibérico",
+                          subtitle = "Reloj Solar de Ra, Cartucho Faraónico, Orejas de Lince y Huella Salvaje",
+                          accent = Color(0xFF60A5FA),
+                          onClick = {
+                              currentScreen = "HOME"
+                              showLinceClockPicker = true
+                          }
+                      )
+
+                      SettingsCardItem(
+                          title = "🎨  Apariencia (Iconos Oro Faraónico, Tamaño y Fuentes)",
+                          subtitle = "Personaliza el paquete de iconos, tamaño, color de texto y alfabeto",
+                          accent = Color(0xFFA855F7),
+                          onClick = { currentScreen = "APPEARANCE" }
+                      )
+
+                      SettingsCardItem(
+                          title = if (waveOnLeft) "🌊  Ola de Letras: En la Izquierda" else "🌊  Ola de Letras: En la Derecha (Clásico)",
+                          subtitle = "Toca para cambiar de lado la barra alfabética interactiva",
+                          accent = Color.White,
+                          onClick = {
+                              waveOnLeft = !waveOnLeft
+                              prefs.edit().putBoolean("wave_left", waveOnLeft).apply()
+                          }
+                      )
+
+                      SettingsCardItem(
+                          title = "🏠  Establecer como Lanzador Predeterminado",
+                          subtitle = "Haz que Lince Ibérico sea tu pantalla principal en Android",
+                          accent = Color(0xFFF43F5E),
+                          onClick = {
+                              context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+                          }
+                      )
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 4: GALERÍA DE TEMAS (EGIPTO + LINCE IBÉRICO)
+              // =========================================================================
+              if (currentScreen == "THEMES") {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF110D0C))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .verticalScroll(rememberScrollState())
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(12.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "SETTINGS" }) {
+                              Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                          }
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text("Temas de Lince y Egipto", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Text(
+                          text = "Toca cualquier tema para activar su fondo, su reloj exclusivo y sus iconos:",
+                          color = Color.White.copy(alpha = 0.7f),
+                          fontSize = 13.sp
+                      )
+
+                      LINCE_THEME_PRESETS.forEach { preset ->
+                          Row(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .clip(RoundedCornerShape(18.dp))
+                                  .background(Color(0xFF271C19))
+                                  .border(1.5.dp, preset.previewColor, RoundedCornerShape(18.dp))
+                                  .clickable {
+                                      applyThemePreset(preset)
+                                      currentScreen = "HOME"
+                                  }
+                                  .padding(16.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Box(
+                                  modifier = Modifier
+                                      .size(46.dp)
+                                      .clip(CircleShape)
+                                      .background(preset.previewColor)
+                                      .border(2.dp, Color.White, CircleShape)
+                              )
+                              Spacer(modifier = Modifier.width(14.dp))
+                              Column(modifier = Modifier.weight(1f)) {
+                                  Text(preset.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                  Spacer(modifier = Modifier.height(4.dp))
+                                  Text(preset.subtitle, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                              }
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 5: FONDOS DE PANTALLA (EGIPTO + LINCE + GALERÍA)
+              // =========================================================================
+              if (currentScreen == "WALLPAPERS") {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF110D0C))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .verticalScroll(rememberScrollState())
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(12.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "SETTINGS" }) {
+                              Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                          }
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text("Colección de Fondos", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Button(
+                          onClick = { galleryLauncher.launch("image/*") },
+                          colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                          shape = RoundedCornerShape(18.dp),
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .height(56.dp)
+                      ) {
+                          Text("📂  Elegir imagen de mi Galería / Descargas", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Text("Fondos artísticos exclusivos integrados:", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+
+                      listOf(
+                          Triple("nilo_piramides", "▲ El Nilo y las Pirámides de Giza (Atardecer Egipcio)", Color(0xFFD4AF37)),
+                          Triple("noche_faraonica", "☥ Noche Faraónica en el Nilo (Lapislázuli y Oro)", Color(0xFF1E3A8A)),
+                          Triple("sierra_andujar", "🐾 Acecho en la Sierra (Lince en Andújar)", Color(0xFF1E3A1A)),
+                          Triple("ocaso_donana", "🐾 Ocaso en Doñana (Silueta de Lince y Ocre)", Color(0xFF7C2D12)),
+                          Triple("mirada_oled", "🐾 Mirada Nocturna OLED (Ojos de Lince en Negro Puro)", Color(0xFF000000)),
+                          Triple("forest_wild", "🌲 Bosque Nocturno Minimalista", Color(0xFF0F172A))
+                      ).forEach { (id, name, color) ->
+                          Row(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .clip(RoundedCornerShape(16.dp))
+                                  .background(if (wallpaperStyle == id) Color(0xFF2E2421) else Color(0xFF1E1412))
+                                  .border(
+                                      1.dp,
+                                      if (wallpaperStyle == id) accentColor else Color.White.copy(alpha = 0.15f),
+                                      RoundedCornerShape(16.dp)
+                                  )
+                                  .clickable {
+                                      wallpaperStyle = id
+                                      prefs.edit().putString("wallpaper_style", id).apply()
+                                      currentScreen = "HOME"
+                                  }
+                                  .padding(16.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Box(
+                                  modifier = Modifier
+                                      .size(38.dp)
+                                      .clip(CircleShape)
+                                      .background(color)
+                                      .border(1.dp, Color.White, CircleShape)
+                              )
+                              Spacer(modifier = Modifier.width(14.dp))
+                              Text(name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                          }
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 6: APARIENCIA
+              // =========================================================================
+              if (currentScreen == "APPEARANCE") {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .background(Color(0xFF110D0C))
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .verticalScroll(rememberScrollState())
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(14.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          IconButton(onClick = { currentScreen = "SETTINGS" }) {
+                              Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                          }
+                          Spacer(modifier = Modifier.width(8.dp))
+                          Text("Apariencia", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                      }
+
+                      Text("Paquete de iconos:", color = accentColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                          listOf(
+                              "gold_pharaoh" to "🟡 Oro de los Faraones (Especial Egipto y Nilo)",
+                              "white_minimal" to "⚪ Simply Minimal White (Blancos puros)",
+                              "neon_cyan" to "🟠 Contorno Ámbar Salvaje (Especial Lince)",
+                              "black_essence" to "⚫ Pure Essence Black (Negros)",
+                              "default" to "🎨 Iconos originales del sistema"
+                          ).forEach { (id, title) ->
+                              Box(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .clip(RoundedCornerShape(12.dp))
+                                      .background(if (iconPackMode == id) accentColor else Color(0xFF1E1412))
+                                      .clickable {
+                                          iconPackMode = id
+                                          prefs.edit().putString("icon_pack", id).apply()
+                                      }
+                                      .padding(12.dp)
+                              ) {
+                                  Text(title, color = if (iconPackMode == id) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                              }
+                          }
+                      }
+
+                      Text("Tamaño de los iconos: ${iconSizeDp.roundToInt()} dp", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                      Slider(
+                          value = iconSizeDp,
+                          onValueChange = {
+                              iconSizeDp = it
+                              prefs.edit().putFloat("icon_size", it).apply()
+                          },
+                          valueRange = 32f..64f,
+                          colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
+                      )
+
+                      Text("Fuente tipográfica:", color = accentColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                          listOf(
+                              "serif" to "Papiro Serif",
+                              "sans" to "Lince Sans",
+                              "mono" to "Códice Mono"
+                          ).forEach { (id, label) ->
+                              Box(
+                                  modifier = Modifier
+                                      .weight(1f)
+                                      .clip(RoundedCornerShape(10.dp))
+                                      .background(if (fontMode == id) accentColor else Color(0xFF1E1412))
+                                      .clickable {
+                                          fontMode = id
+                                          prefs.edit().putString("font_mode", id).apply()
+                                      }
+                                      .padding(vertical = 10.dp),
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                  Text(label, color = if (fontMode == id) Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                              }
+                          }
+                      }
+
+                      Divider(color = Color.White.copy(alpha = 0.12f))
+
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Column(modifier = Modifier.weight(1f)) {
+                              Text("Ocultar alfabeto de búsqueda", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                              Text("Muestra las letras solo al deslizar por el borde", color = Color.Gray, fontSize = 12.sp)
+                          }
+                          Switch(
+                              checked = hideAlphabet,
+                              onCheckedChange = {
+                                  hideAlphabet = it
+                                  prefs.edit().putBoolean("hide_alphabet", it).apply()
+                              }
+                          )
+                      }
+
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Column(modifier = Modifier.weight(1f)) {
+                              Text("Ocultar nombres de favoritos", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                              Text("Muestra únicamente los iconos en la pantalla principal", color = Color.Gray, fontSize = 12.sp)
+                          }
+                          Switch(
+                              checked = hideFavoriteNames,
+                              onCheckedChange = {
+                                  hideFavoriteNames = it
+                                  prefs.edit().putBoolean("hide_fav_names", it).apply()
+                              }
+                          )
+                      }
+
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Column(modifier = Modifier.weight(1f)) {
+                              Text("Mostrar botón flotante inferior", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                              Text("Acceso directo rápido a los ajustes y temas", color = Color.Gray, fontSize = 12.sp)
+                          }
+                          Switch(
+                              checked = showLinceButton,
+                              onCheckedChange = {
+                                  showLinceButton = it
+                                  prefs.edit().putBoolean("show_lince_btn", it).apply()
+                              }
+                          )
+                      }
+
+                      Button(
+                          onClick = { currentScreen = "HOME" },
+                          colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                          shape = RoundedCornerShape(24.dp),
+                          modifier = Modifier.fillMaxWidth().height(50.dp)
+                      ) {
+                          Text("Aplicar y volver al Inicio", color = Color.Black, fontWeight = FontWeight.Bold)
+                      }
+                  }
+                  return
+              }
+
+              // =========================================================================
+              // PANTALLA 7: ESCRITORIO PRINCIPAL (HOME)
+              // =========================================================================
+              val favoriteApps = remember(apps, favoritePackages) {
+                  favoritePackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } }
+              }
+
+              val displayedApps = remember(apps, favoriteApps, searchQuery, isSearching, activeChar) {
+                  when {
+                      isSearching && searchQuery.isNotBlank() ->
+                          apps.filter { it.label.contains(searchQuery.trim(), ignoreCase = true) }
+                      isSearching -> apps
+                      activeChar == '★' -> favoriteApps
+                      else -> {
+                          val exact = apps.filter { it.initial == activeChar }
+                          if (exact.isNotEmpty()) exact else apps
+                      }
+                  }
+              }
+
+              val w = containerSize.width.toFloat().coerceAtLeast(1f)
+              val h = containerSize.height.toFloat().coerceAtLeast(1f)
+              val topWaveY = h * 0.20f
+              val bottomWaveY = h * 0.85f
+
+              val wavePoints = remember(containerSize, touchY, waveOnLeft) {
+                  val total = LINCE_INDEX.size
+                  val safeTotal = if (total > 1) total - 1 else 1
+                  val maxWaveShift = with(density) { 68.dp.toPx() }
+                  val waveRadius = with(density) { 120.dp.toPx() }
+
+                  LINCE_INDEX.indices.map { i ->
+                      val t = i.toFloat() / safeTotal.toFloat()
+                      val baseY = topWaveY + t * (bottomWaveY - topWaveY)
+                      val baseX = if (waveOnLeft) {
+                          with(density) { 24.dp.toPx() }
+                      } else {
+                          w - with(density) { 24.dp.toPx() }
+                      }
+
+                      val currentTouchY = touchY
+                      val shift = if (currentTouchY != null) {
+                          val distY = abs(baseY - currentTouchY)
+                          if (distY < waveRadius) {
+                              val factor = (1f + cos((distY / waveRadius) * PI.toFloat())) / 2f
+                              factor * maxWaveShift
+                          } else {
+                              0f
+                          }
+                      } else {
+                          0f
+                      }
+
+                      val finalX = if (waveOnLeft) baseX + shift else baseX - shift
+                      Offset(finalX, baseY)
+                  }
+              }
+
+              fun handleWaveTouch(yPos: Float) {
+                  touchY = yPos
+                  val clampedY = yPos.coerceIn(topWaveY, bottomWaveY)
+                  val fraction = (clampedY - topWaveY) / (bottomWaveY - topWaveY).coerceAtLeast(1f)
+                  val idx = (fraction * (LINCE_INDEX.size - 1)).roundToInt()
+                      .coerceIn(0, LINCE_INDEX.size - 1)
+
+                  if (activeWaveIndex != idx) {
+                      activeWaveIndex = idx
+                      activeChar = LINCE_INDEX[idx]
+                      isSearching = false
+                      searchQuery = ""
+                      view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                  }
+              }
+
+              Box(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .onSizeChanged { containerSize = it }
+                      .pointerInput(Unit) {
+                          detectTapGestures(
+                              onLongPress = {
+                                  view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                  showLinceWidgetSheet = true
+                              },
+                              onTap = {
+                                  if (isMovingWidgetMode) isMovingWidgetMode = false
+                              }
+                          )
+                      }
+                      .pointerInput(Unit) {
+                          var totalDy = 0f
+                          detectVerticalDragGestures(
+                              onDragStart = { totalDy = 0f },
+                              onVerticalDrag = { _, dragAmount -> totalDy += dragAmount },
+                              onDragEnd = {
+                                  if (totalDy < -90f && !isSearching) {
+                                      isSearching = true
+                                  } else if (totalDy > 90f && !isSearching) {
+                                      expandStatusBar(context)
+                                  }
+                              }
+                          )
+                      }
+              ) {
+                  // 1. RENDERIZADO DE FONDOS DE PANTALLA (EGIPTO + LINCE IBÉRICO + GALERÍA)
+                  if (wallpaperStyle == "custom_gallery" && customWallpaperBitmap != null) {
+                      Image(
+                          bitmap = customWallpaperBitmap!!.asImageBitmap(),
+                          contentDescription = null,
+                          contentScale = ContentScale.Crop,
+                          modifier = Modifier.fillMaxSize()
+                      )
+                  } else {
+                      Canvas(modifier = Modifier.fillMaxSize()) {
+                          val cw = size.width
+                          val ch = size.height
+
+                          when (wallpaperStyle) {
+                              "nilo_piramides" -> {
+                                  drawEgyptianNileWallpaper(this, cw, ch, isNight = false)
+                              }
+                              "noche_faraonica" -> {
+                                  drawEgyptianNileWallpaper(this, cw, ch, isNight = true)
+                              }
+                              "sierra_andujar" -> {
+                                  drawRect(
+                                      brush = Brush.verticalGradient(
+                                          colors = listOf(Color(0xFF0F1713), Color(0xFF0B0D0C))
+                                      )
+                                  )
+                                  val pinePath = Path().apply {
+                                      moveTo(0f, ch * 0.7f)
+                                      for (x in 0..(cw.toInt()) step 40) {
+                                          lineTo(x.toFloat(), ch * 0.72f - (sin(x * 0.05f) * 15f) - (cos(x * 0.012f) * 40f))
+                                          lineTo(x.toFloat() + 15, ch * 0.65f - (sin(x * 0.03f) * 30f))
+                                          lineTo(x.toFloat() + 30, ch * 0.72f)
+                                      }
+                                      lineTo(cw, ch)
+                                      lineTo(0f, ch)
+                                      close()
+                                  }
+                                  drawPath(pinePath, Color(0xFF1E2E21).copy(alpha = 0.5f))
+                                  drawLinceSilhouette(this, Offset(cw * 0.62f, ch * 0.64f), cw * 0.32f, Color(0xFF0E130F))
+                              }
+                              "ocaso_donana" -> {
+                                  drawRect(
+                                      brush = Brush.verticalGradient(
+                                          colors = listOf(Color(0xFF7C2D12), Color(0xFF3F1A0A), Color(0xFF140B07))
+                                      )
+                                  )
+                                  drawCircle(
+                                      brush = Brush.radialGradient(
+                                          colors = listOf(Color(0xFFFEF08A), Color(0xFFF97316).copy(alpha = 0.1f)),
+                                          center = Offset(cw * 0.35f, ch * 0.55f),
+                                          radius = 180f
+                                      ),
+                                      center = Offset(cw * 0.35f, ch * 0.55f),
+                                      radius = 180f
+                                  )
+                                  val foliagePath = Path().apply {
+                                      moveTo(0f, ch * 0.75f)
+                                      for (x in 0..(cw.toInt()) step 20) {
+                                          lineTo(x.toFloat(), ch * 0.78f - (abs(sin(x * 0.04f)) * 40f))
+                                      }
+                                      lineTo(cw, ch)
+                                      lineTo(0f, ch)
+                                      close()
+                                  }
+                                  drawPath(foliagePath, Color(0xFF1F0D05))
+                                  drawLinceSilhouette(this, Offset(cw * 0.55f, ch * 0.68f), cw * 0.4f, Color(0xFF0A0402))
+                              }
+                              "mirada_oled" -> {
+                                  drawRect(color = Color(0xFF000000))
+                                  val leftEye = Offset(cw * 0.62f, ch * 0.35f)
+                                  val rightEye = Offset(cw * 0.78f, ch * 0.35f)
+                                  drawCircle(accentColor.copy(alpha = 0.7f), radius = 16f, center = leftEye)
+                                  drawCircle(accentColor.copy(alpha = 0.7f), radius = 16f, center = rightEye)
+                                  drawCircle(Color.Black, radius = 4f, center = leftEye)
+                                  drawCircle(Color.Black, radius = 4f, center = rightEye)
+                                  drawLine(Color.White.copy(alpha = 0.2f), leftEye + Offset(-15f, -10f), leftEye + Offset(-40f, -80f), strokeWidth = 3f)
+                                  drawLine(Color.White.copy(alpha = 0.2f), rightEye + Offset(15f, -10f), rightEye + Offset(40f, -80f), strokeWidth = 3f)
+                              }
+                              else -> {
+                                  drawRect(
+                                      brush = Brush.verticalGradient(
+                                          colors = listOf(Color(0xFF0A0F1D), Color(0xFF020408))
+                                      )
+                                  )
+                              }
+                          }
+                      }
+                  }
+
+                  // 2. CAPA DE INTERFAZ Y RELOJES (EGIPCIOS Y LINCE)
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .padding(
+                              start = if (waveOnLeft) 60.dp else 26.dp,
+                              end = if (waveOnLeft) 26.dp else 56.dp,
+                              top = 12.dp,
+                              bottom = 12.dp
+                          )
+                  ) {
+                      if (isMovingWidgetMode) {
+                          Column(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .clip(RoundedCornerShape(16.dp))
+                                  .background(Color(0xEE1E1412))
+                                  .border(1.dp, accentColor, RoundedCornerShape(16.dp))
+                                  .padding(14.dp)
+                          ) {
+                              Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.SpaceBetween,
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Text("↕ Arrastra para mover el reloj y las apps", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                  TextButton(onClick = { isMovingWidgetMode = false }) {
+                                      Text("Hecho", color = accentColor, fontWeight = FontWeight.Bold)
+                                  }
+                              }
+                              Slider(
+                                  value = verticalOffsetDp,
+                                  onValueChange = {
+                                      verticalOffsetDp = it
+                                      prefs.edit().putFloat("vertical_offset", it).apply()
+                                  },
+                                  valueRange = 0f..200f,
+                                  colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
+                              )
+                          }
+                          Spacer(modifier = Modifier.height(8.dp))
+                      }
+
+                      Spacer(modifier = Modifier.height(verticalOffsetDp.dp))
+
+                      // RELOJES EXCLUSIVOS (LINCE IBÉRICO Y ANTIGUO EGIPTO)
+                      if (linceClockStyle > 0 && !isSearching && activeChar == '★') {
+                          Box(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .padding(bottom = 18.dp)
+                                  .pointerInput(Unit) {
+                                      detectTapGestures(
+                                          onTap = { showLinceClockPicker = true },
+                                          onLongPress = { showLinceWidgetSheet = true }
+                                      )
+                                  },
+                              contentAlignment = Alignment.CenterStart
+                          ) {
+                              when (linceClockStyle) {
+                                  1 -> {
+                                      // RELOJ 1: OREJAS DE LINCE
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Canvas(modifier = Modifier.size(126.dp)) {
+                                              val center = Offset(size.width / 2f, size.height / 2f)
+                                              val r = size.width / 2f
+                                              drawCircle(Color.White.copy(alpha = 0.08f), radius = r)
+                                              drawCircle(accentColor.copy(alpha = 0.4f), radius = r, style = Stroke(width = 2.dp.toPx()))
+
+                                              val earsBg = Path().apply {
+                                                  moveTo(center.x - 30f, center.y - 10f)
+                                                  lineTo(center.x - 50f, center.y - r * 0.85f)
+                                                  lineTo(center.x - 10f, center.y - 20f)
+                                                  moveTo(center.x + 30f, center.y - 10f)
+                                                  lineTo(center.x + 50f, center.y - r * 0.85f)
+                                                  lineTo(center.x + 10f, center.y - 20f)
+                                              }
+                                              drawPath(earsBg, accentColor.copy(alpha = 0.25f), style = Stroke(width = 1.5.dp.toPx()))
+
+                                              drawCircle(accentColor, radius = 4f, center = Offset(center.x, center.y - r + 15f))
+                                              drawCircle(accentColor, radius = 4f, center = Offset(center.x + r - 15f, center.y))
+                                              drawCircle(accentColor, radius = 4f, center = Offset(center.x, center.y + r - 15f))
+                                              drawCircle(accentColor, radius = 4f, center = Offset(center.x - r + 15f, center.y))
+
+                                              val hAngle = ((hourFloat % 12f) * 30f - 90f) * (PI.toFloat() / 180f)
+                                              val hrLength = r * 0.48f
+                                              val hEnd = Offset(center.x + cos(hAngle) * hrLength, center.y + sin(hAngle) * hrLength)
+                                              drawLine(accentColor, start = center, end = hEnd, strokeWidth = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                                              drawCircle(Color.Black, radius = 4f, center = hEnd)
+
+                                              val mAngle = (minuteFloat * 6f - 90f) * (PI.toFloat() / 180f)
+                                              val mLength = r * 0.72f
+                                              val mEnd = Offset(center.x + cos(mAngle) * mLength, center.y + sin(mAngle) * mLength)
+                                              drawLine(Color.White, start = center, end = mEnd, strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                                              drawLine(Color.Black, mEnd, mEnd + Offset(cos(mAngle + 0.5f) * 12f, sin(mAngle + 0.5f) * 12f), strokeWidth = 2f)
+                                              drawLine(Color.Black, mEnd, mEnd + Offset(cos(mAngle - 0.5f) * 12f, sin(mAngle - 0.5f) * 12f), strokeWidth = 2f)
+
+                                              drawCircle(Color.Black, radius = 5.dp.toPx(), center = center)
+                                              drawCircle(accentColor, radius = 2.dp.toPx(), center = center)
+                                          }
+                                          Spacer(modifier = Modifier.height(8.dp))
+                                          Text(
+                                              text = "ACECHANDO: $currentTime",
+                                              color = primaryTextColor,
+                                              fontSize = 13.sp,
+                                              fontWeight = FontWeight.Bold,
+                                              letterSpacing = 2.sp
+                                          )
+                                      }
+                                  }
+                                  2 -> {
+                                      // RELOJ 2: HUELLA SALVAJE
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Box(
+                                              modifier = Modifier.size(110.dp),
+                                              contentAlignment = Alignment.Center
+                                          ) {
+                                              Canvas(modifier = Modifier.fillMaxSize()) {
+                                                  val scale = size.width / 110f
+                                                  val heel = Path().apply {
+                                                      moveTo(40f * scale, 55f * scale)
+                                                      quadraticBezierTo(20f * scale, 75f * scale, 35f * scale, 95f * scale)
+                                                      quadraticBezierTo(55f * scale, 85f * scale, 75f * scale, 95f * scale)
+                                                      quadraticBezierTo(90f * scale, 75f * scale, 70f * scale, 55f * scale)
+                                                      quadraticBezierTo(55f * scale, 65f * scale, 40f * scale, 55f * scale)
+                                                      close()
+                                                  }
+                                                  drawPath(heel, Color(0xFFF59E0B).copy(alpha = 0.14f))
+                                                  drawPath(heel, accentColor.copy(alpha = 0.5f), style = Stroke(width = 2.dp.toPx()))
+
+                                                  val deditos = listOf(
+                                                      Offset(23f, 38f),
+                                                      Offset(42f, 25f),
+                                                      Offset(68f, 25f),
+                                                      Offset(87f, 38f)
+                                                  )
+                                                  deditos.forEach { pt ->
+                                                      drawCircle(accentColor.copy(alpha = 0.5f), radius = 10f * scale, center = pt * scale)
+                                                      drawLine(Color.White.copy(alpha = 0.4f), pt * scale, (pt + Offset(0f, -14f)) * scale, strokeWidth = 2.5f)
+                                                  }
+                                              }
+                                              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                  Text(
+                                                      text = currentTime,
+                                                      color = Color.White,
+                                                      fontSize = 24.sp,
+                                                      fontWeight = FontWeight.Bold
+                                                  )
+                                                  Text(
+                                                      text = "BATERÍA: $batteryLevel%",
+                                                      color = accentColor,
+                                                      fontSize = 8.sp,
+                                                      fontWeight = FontWeight.SemiBold
+                                                  )
+                                              }
+                                          }
+                                      }
+                                  }
+                                  3 -> {
+                                      // RELOJ 3: MIRADA SALVAJE DOÑANA
+                                      Row(verticalAlignment = Alignment.CenterVertically) {
+                                          Box(
+                                              modifier = Modifier
+                                                  .clip(RoundedCornerShape(12.dp))
+                                                  .background(accentColor)
+                                                  .padding(horizontal = 14.dp, vertical = 6.dp)
+                                          ) {
+                                              Text(
+                                                  text = currentDayNumber,
+                                                  color = Color.Black,
+                                                  fontSize = 22.sp,
+                                                  fontWeight = FontWeight.ExtraBold
+                                              )
+                                          }
+                                          Spacer(modifier = Modifier.width(14.dp))
+                                          Column {
+                                              Text(
+                                                  text = "$currentDayName • TERRITORIO LINCE",
+                                                  color = accentColor,
+                                                  fontSize = 11.sp,
+                                                  fontWeight = FontWeight.Bold,
+                                                  letterSpacing = 1.sp
+                                              )
+                                              Text(
+                                                  text = currentTime,
+                                                  color = Color.White,
+                                                  fontSize = 32.sp,
+                                                  fontWeight = FontWeight.Bold,
+                                                  fontFamily = appFontFamily
+                                              )
+                                              Text(
+                                                  text = "Sierra y Monte • ☀ 18°C • 🔋 $batteryLevel%",
+                                                  color = secondaryTextColor,
+                                                  fontSize = 11.sp
+                                              )
+                                          }
+                                      }
+                                  }
+                                  4 -> {
+                                      // RELOJ 4: RELOJ SOLAR EGIPCIO DE RA Y OJO DE HORUS
+                                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                          Text(
+                                              text = "☥  SOL DE RA • VALLE DEL NILO  ☥",
+                                              color = Color(0xFFFFD700),
+                                              fontSize = 10.sp,
+                                              fontWeight = FontWeight.Bold,
+                                              letterSpacing = 2.sp
+                                          )
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Canvas(modifier = Modifier.size(134.dp)) {
+                                              val center = Offset(size.width / 2f, size.height / 2f)
+                                              val r = size.width / 2f
+
+                                              // Halo solar exterior
+                                              drawCircle(
+                                                  brush = Brush.radialGradient(
+                                                      colors = listOf(Color(0xFF1E293B).copy(alpha = 0.85f), Color(0xFF090D16).copy(alpha = 0.92f)),
+                                                      center = center,
+                                                      radius = r
+                                                  ),
+                                                  radius = r,
+                                                  center = center
+                                              )
+                                              // Doble anillo real de oro y turquesa egipcio
+                                              drawCircle(Color(0xFFFFD700), radius = r, style = Stroke(width = 2.8.dp.toPx()))
+                                              drawCircle(Color(0xFF2DD4BF).copy(alpha = 0.7f), radius = r * 0.91f, style = Stroke(width = 1.2.dp.toPx()))
+
+                                              // 12 Rayos / Marcas jeroglíficas solares
+                                              for (m in 0 until 12) {
+                                                  val ang = (m * 30.0 - 90.0) * (PI / 180.0)
+                                                  val p1 = Offset(
+                                                      (center.x + cos(ang) * (r * 0.78f)).toFloat(),
+                                                      (center.y + sin(ang) * (r * 0.78f)).toFloat()
+                                                  )
+                                                  val p2 = Offset(
+                                                      (center.x + cos(ang) * (r * 0.89f)).toFloat(),
+                                                      (center.y + sin(ang) * (r * 0.89f)).toFloat()
+                                                  )
+                                                  drawLine(
+                                                      color = if (m % 3 == 0) Color(0xFFFFD700) else Color(0xFFFDE047).copy(alpha = 0.55f),
+                                                      start = p1,
+                                                      end = p2,
+                                                      strokeWidth = if (m % 3 == 0) 3.dp.toPx() else 1.5.dp.toPx()
+                                                  )
+                                              }
+
+                                              // Pequeña pirámide dorada y Ojo de Horus estilizado en el centro
+                                              val innerPyr = Path().apply {
+                                                  moveTo(center.x, center.y - r * 0.36f)
+                                                  lineTo(center.x - r * 0.36f, center.y + r * 0.25f)
+                                                  lineTo(center.x + r * 0.36f, center.y + r * 0.25f)
+                                                  close()
+                                              }
+                                              drawPath(innerPyr, Color(0xFFFFD700).copy(alpha = 0.16f))
+                                              drawPath(innerPyr, Color(0xFFFFD700).copy(alpha = 0.45f), style = Stroke(width = 1.2.dp.toPx()))
+
+                                              // Ojo de Horus (Udjat) en el corazón de la pirámide
+                                              val eyeArc = Path().apply {
+                                                  moveTo(center.x - 18f, center.y)
+                                                  quadraticBezierTo(center.x, center.y - 12f, center.x + 18f, center.y)
+                                                  quadraticBezierTo(center.x, center.y + 12f, center.x - 18f, center.y)
+                                                  close()
+                                              }
+                                              drawPath(eyeArc, Color(0xFF2DD4BF).copy(alpha = 0.45f))
+                                              drawPath(eyeArc, Color(0xFFFFD700), style = Stroke(width = 1.5.dp.toPx()))
+                                              // Lágrima y espiral de Horus
+                                              drawLine(Color(0xFFFFD700), Offset(center.x, center.y + 6f), Offset(center.x, center.y + 20f), strokeWidth = 2f)
+                                              drawLine(Color(0xFFFFD700), Offset(center.x + 6f, center.y + 4f), Offset(center.x + 18f, center.y + 16f), strokeWidth = 2f)
+
+                                              // Aguja Horaria (Cetro Real Dorado)
+                                              val hAngle = ((hourFloat % 12f) * 30f - 90f) * (PI.toFloat() / 180f)
+                                              val hEnd = Offset(center.x + cos(hAngle) * (r * 0.50f), center.y + sin(hAngle) * (r * 0.50f))
+                                              drawLine(Color(0xFFFFD700), start = center, end = hEnd, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+
+                                              // Aguja Minutera (Obelisco Turquesa y Oro)
+                                              val mAngle = (minuteFloat * 6f - 90f) * (PI.toFloat() / 180f)
+                                              val mEnd = Offset(center.x + cos(mAngle) * (r * 0.72f), center.y + sin(mAngle) * (r * 0.72f))
+                                              drawLine(Color(0xFFFEF08A), start = center, end = mEnd, strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+
+                                              // Disco Solar central
+                                              drawCircle(Color(0xFFB45309), radius = 6.dp.toPx(), center = center)
+                                              drawCircle(Color(0xFFFFD700), radius = 3.5.dp.toPx(), center = center)
+                                          }
+                                          Spacer(modifier = Modifier.height(8.dp))
+                                          // Cartucho inferior con hora digital y clima del Nilo
+                                          Box(
+                                              modifier = Modifier
+                                                  .clip(RoundedCornerShape(20.dp))
+                                                  .background(Color(0xCC111827))
+                                                  .border(1.2.dp, Color(0xFFFFD700), RoundedCornerShape(20.dp))
+                                                  .padding(horizontal = 16.dp, vertical = 5.dp)
+                                          ) {
+                                              Text(
+                                                  text = "▲ $currentTime  •  $currentDateShort  •  🔋 $batteryLevel%",
+                                                  color = Color(0xFFFEF08A),
+                                                  fontSize = 11.sp,
+                                                  fontWeight = FontWeight.Bold
+                                              )
+                                          }
+                                      }
+                                  }
+                                  5 -> {
+                                      // RELOJ 5: CARTUCHO REAL FARAÓNICO (DIGITAL JEROGLÍFICO)
+                                      Column(
+                                          modifier = Modifier
+                                              .width(230.dp)
+                                              .clip(RoundedCornerShape(26.dp))
+                                              .background(
+                                                  Brush.verticalGradient(
+                                                      colors = listOf(Color(0xDD1E293B), Color(0xEE0F172A))
+                                                  )
+                                              )
+                                              .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(26.dp))
+                                              .padding(horizontal = 18.dp, vertical = 14.dp),
+                                          horizontalAlignment = Alignment.CenterHorizontally
+                                      ) {
+                                          Text(
+                                              text = "☥  𓂀  ▲  DINASTÍA DEL NILO  ▲  𓂀  ☥",
+                                              color = Color(0xFFFFD700),
+                                              fontSize = 9.sp,
+                                              fontWeight = FontWeight.Bold,
+                                              letterSpacing = 1.5.sp
+                                          )
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Text(
+                                              text = currentTime,
+                                              color = Color(0xFFFEF9C3),
+                                              fontSize = 44.sp,
+                                              fontWeight = FontWeight.ExtraBold,
+                                              fontFamily = FontFamily.Serif,
+                                              letterSpacing = 2.sp
+                                          )
+                                          Text(
+                                              text = "$currentDayName, $currentDayNumber  •  EL CAIRO / GIZA",
+                                              color = Color(0xFF2DD4BF),
+                                              fontSize = 10.sp,
+                                              fontWeight = FontWeight.Bold,
+                                              letterSpacing = 1.sp
+                                          )
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Box(
+                                              modifier = Modifier
+                                                  .fillMaxWidth()
+                                                  .height(2.dp)
+                                                  .background(Color(0xFFFFD700).copy(alpha = 0.5f))
+                                          )
+                                          Spacer(modifier = Modifier.height(6.dp))
+                                          Text(
+                                              text = "☀ Cielo despejado en el Nilo • Energía de Ra: $batteryLevel%",
+                                              color = Color(0xFFFDE047).copy(alpha = 0.85f),
+                                              fontSize = 10.sp
+                                          )
+                                      }
+                                  }
+                              }
+                          }
+                      }
+
+                      // Reloj clásico alternativo
+                      if (clockStyle > 0) {
+                          Column(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .clickable { showLinceWidgetSheet = true }
+                                  .padding(bottom = 12.dp)
+                          ) {
+                              Text(
+                                  text = currentTime,
+                                  color = primaryTextColor,
+                                  fontSize = 54.sp,
+                                  fontWeight = FontWeight.Bold,
+                                  fontFamily = appFontFamily,
+                                  letterSpacing = (-1.5).sp
+                              )
+                              if (showCalendarDate) {
+                                  Text(
+                                      text = "$currentDateShort  •  🔋 $batteryLevel%",
+                                      color = secondaryTextColor,
+                                      fontSize = 14.sp,
+                                      fontWeight = FontWeight.Medium
+                                  )
+                              }
+                          }
+                      }
+
+                      // BUSCADOR DESLIZABLE
+                      if (isSearching) {
+                          Row(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .clip(RoundedCornerShape(28.dp))
+                                  .background(Color(0xEEFFFFFF))
+                                  .padding(horizontal = 16.dp, vertical = 12.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Icon(
+                                  imageVector = Icons.Default.Search,
+                                  contentDescription = null,
+                                  tint = Color(0xFF111827),
+                                  modifier = Modifier.size(20.dp)
+                              )
+                              Spacer(modifier = Modifier.width(10.dp))
+                              BasicTextField(
+                                  value = searchQuery,
+                                  onValueChange = { searchQuery = it },
+                                  singleLine = true,
+                                  textStyle = TextStyle(color = Color(0xFF111827), fontSize = 16.sp),
+                                  cursorBrush = SolidColor(accentColor),
+                                  modifier = Modifier.weight(1f),
+                                  decorationBox = { innerTextField ->
+                                      if (searchQuery.isEmpty()) {
+                                          Text(
+                                              text = "Buscar aplicaciones...",
+                                              color = Color(0xFF6B7280),
+                                              fontSize = 15.sp
+                                          )
+                                      }
+                                      innerTextField()
+                                  }
+                              )
+                              IconButton(
+                                  onClick = {
+                                      searchQuery = ""
+                                      isSearching = false
+                                  },
+                                  modifier = Modifier.size(22.dp)
+                              ) {
+                                  Icon(
+                                      imageVector = Icons.Default.Close,
+                                      contentDescription = null,
+                                      tint = Color(0xFF374151)
+                                  )
+                              }
+                          }
+                          Spacer(modifier = Modifier.height(12.dp))
+                      }
+
+                      // CABECERA CUANDO HAY UNA LETRA FIJADA EN PANTALLA
+                      if (!isSearching && activeChar != '★') {
+                          Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              modifier = Modifier
+                                  .padding(bottom = 8.dp)
+                                  .clip(RoundedCornerShape(12.dp))
+                                  .background(Color.Black.copy(alpha = 0.45f))
+                                  .border(1.dp, accentColor.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                  .padding(horizontal = 12.dp, vertical = 6.dp)
+                          ) {
+                              Text(
+                                  text = "Letra: $activeChar",
+                                  color = primaryTextColor,
+                                  fontSize = 15.sp,
+                                  fontWeight = FontWeight.Bold
+                              )
+                              Spacer(modifier = Modifier.width(12.dp))
+                              TextButton(
+                                  onClick = {
+                                      activeChar = '★'
+                                      activeWaveIndex = null
+                                  },
+                                  contentPadding = PaddingValues(0.dp)
+                              ) {
+                                  Text("★ Volver a Favoritos", color = accentColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                              }
+                          }
+                      }
+
+                      // LISTA DE APLICACIONES + BOTONES RÁPIDOS AL FINAL
+                      LazyColumn(
+                          state = listState,
+                          modifier = Modifier.fillMaxSize(),
+                          verticalArrangement = Arrangement.spacedBy(2.dp),
+                          contentPadding = PaddingValues(bottom = 90.dp)
+                      ) {
+                          items(displayedApps.size) { i ->
+                              val app = displayedApps[i]
+                              val arcOffsetDp = if (touchY != null) {
+                                  val normalized = (i - displayedApps.size / 2f) / (displayedApps.size.coerceAtLeast(1) / 2f)
+                                  val curve = (1f - (normalized * normalized).coerceIn(0f, 1f)) * 34f
+                                  if (waveOnLeft) curve else -curve
+                              } else {
+                                  0f
+                              }
+
+                              LinceAppRow(
+                                  app = app,
+                                  textColor = primaryTextColor,
+                                  fontFamily = appFontFamily,
+                                  iconPackMode = iconPackMode,
+                                  iconSizeDp = iconSizeDp,
+                                  hideName = hideFavoriteNames && activeChar == '★' && !isSearching,
+                                  horizontalShiftDp = arcOffsetDp,
+                                  onClick = { launchApp(context, app.packageName) },
+                                  onLongClick = { selectedAppForMenu = app }
+                              )
+                          }
+
+                          item(key = "lince_footer") {
+                              Spacer(modifier = Modifier.height(22.dp))
+                              Row(
+                                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                  modifier = Modifier.fillMaxWidth()
+                              ) {
+                                  Box(
+                                      modifier = Modifier
+                                          .clip(RoundedCornerShape(20.dp))
+                                          .background(Color.Black.copy(alpha = 0.45f))
+                                          .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                                          .clickable { currentScreen = "THEMES" }
+                                          .padding(horizontal = 12.dp, vertical = 8.dp)
+                                  ) {
+                                      Text(
+                                          text = "☥ Temas Egipto/Lince",
+                                          color = accentColor,
+                                          fontSize = 12.sp,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+                                  Box(
+                                      modifier = Modifier
+                                          .clip(RoundedCornerShape(20.dp))
+                                          .background(Color.Black.copy(alpha = 0.45f))
+                                          .border(1.dp, primaryTextColor.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                          .clickable { currentScreen = "FAVORITES" }
+                                          .padding(horizontal = 12.dp, vertical = 8.dp)
+                                  ) {
+                                      Text(
+                                          text = "★ Favoritos",
+                                          color = primaryTextColor,
+                                          fontSize = 12.sp,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+                                  Box(
+                                      modifier = Modifier
+                                          .clip(RoundedCornerShape(20.dp))
+                                          .background(Color.Black.copy(alpha = 0.45f))
+                                          .border(1.dp, primaryTextColor.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                                          .clickable { currentScreen = "SETTINGS" }
+                                          .padding(horizontal = 12.dp, vertical = 8.dp)
+                                  ) {
+                                      Text(
+                                          text = "⚙ Ajustes",
+                                          color = primaryTextColor,
+                                          fontSize = 12.sp,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  // OLA ALFABÉTICA LATERAL (MANTIENE LA LETRA FIJA AL SOLTAR EL DEDO)
+                  Box(
+                      modifier = Modifier
+                          .fillMaxHeight()
+                          .width(72.dp)
+                          .align(if (waveOnLeft) Alignment.CenterStart else Alignment.CenterEnd)
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectTapGestures(
+                                  onPress = { offset ->
+                                      handleWaveTouch(offset.y)
+                                      tryAwaitRelease()
+                                      touchY = null
+                                      activeWaveIndex = null
+                                  }
+                              )
+                          }
+                          .pointerInput(containerSize, waveOnLeft) {
+                              detectDragGestures(
+                                  onDragStart = { offset -> handleWaveTouch(offset.y) },
+                                  onDrag = { change, _ ->
+                                      change.consume()
+                                      handleWaveTouch(change.position.y)
+                                  },
+                                  onDragEnd = {
+                                      touchY = null
+                                      activeWaveIndex = null
+                                  },
+                                  onDragCancel = {
+                                      touchY = null
+                                      activeWaveIndex = null
+                                  }
+                              )
+                          }
+                  ) {}
+
+                  wavePoints.forEachIndexed { index, pt ->
+                      val char = LINCE_INDEX[index]
+                      val isSelected = activeWaveIndex == index
+                      val isCurrentSection = activeChar == char && activeWaveIndex == null
+                      val dist = activeWaveIndex?.let { abs(index - it) } ?: 99
+
+                      val alphaVal = when {
+                          touchY != null -> when {
+                              dist == 0 -> 1f
+                              dist <= 3 -> 0.9f
+                              else -> 0.5f
+                          }
+                          hideAlphabet -> 0f
+                          isCurrentSection -> 1f
+                          else -> 0.78f
+                      }
+
+                      if (alphaVal > 0.01f) {
+                          val boxPx = with(density) { 24.dp.toPx() }
+                          Box(
+                              modifier = Modifier
+                                  .offset {
+                                      IntOffset(
+                                          x = (pt.x - boxPx / 2f).roundToInt(),
+                                          y = (pt.y - boxPx / 2f).roundToInt()
+                                      )
+                                  }
+                                  .size(24.dp)
+                                  .scale(if (isSelected || isCurrentSection) 1.5f else 1f)
+                                  .alpha(alphaVal),
+                              contentAlignment = Alignment.Center
+                          ) {
+                              Text(
+                                  text = char.toString(),
+                                  color = if (isSelected || isCurrentSection) accentColor else primaryTextColor,
+                                  fontSize = 11.sp,
+                                  fontWeight = if (isSelected || isCurrentSection) FontWeight.Bold else FontWeight.Medium
+                              )
+                          }
+                      }
+                  }
+
+                  val currentIdx = activeWaveIndex
+                  val currentTouchY = touchY
+                  if (currentIdx != null && currentTouchY != null) {
+                      val bubbleSizePx = with(density) { 56.dp.toPx() }
+                      val bubbleX = if (waveOnLeft) {
+                          with(density) { 96.dp.toPx() }
+                      } else {
+                          w - with(density) { 96.dp.toPx() } - bubbleSizePx
+                      }
+                      val bubbleY = (currentTouchY - bubbleSizePx / 2f)
+                          .coerceIn(topWaveY - 20f, bottomWaveY - bubbleSizePx + 20f)
+
+                      Box(
+                          modifier = Modifier
+                              .offset {
+                                  IntOffset(
+                                      x = bubbleX.roundToInt(),
+                                      y = bubbleY.roundToInt()
+                                  )
+                              }
+                              .size(56.dp)
+                              .background(accentColor, CircleShape),
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Text(
+                              text = LINCE_INDEX[currentIdx].toString(),
+                              color = Color.Black,
+                              fontSize = 24.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                      }
+                  }
+
+                  if (showLinceButton) {
+                      Box(
+                          modifier = Modifier
+                              .align(Alignment.BottomEnd)
+                              .navigationBarsPadding()
+                              .padding(end = 22.dp, bottom = 18.dp)
+                              .size(52.dp)
+                              .clip(CircleShape)
+                              .background(accentColor.copy(alpha = 0.92f))
+                              .border(1.5.dp, Color.Black.copy(alpha = 0.4f), CircleShape)
+                              .pointerInput(Unit) {
+                                  detectTapGestures(
+                                      onTap = { currentScreen = "SETTINGS" },
+                                      onLongPress = { showLinceWidgetSheet = true }
+                                  )
+                              },
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Icon(
+                              imageVector = Icons.Default.Settings,
+                              contentDescription = "Ajustes",
+                              tint = Color.Black,
+                              modifier = Modifier.size(24.dp)
+                          )
+                      }
+                  }
+
+                  // HOJA EMERGENTE DEL ESCRITORIO
+                  if (showLinceWidgetSheet) {
+                      AlertDialog(
+                          onDismissRequest = { showLinceWidgetSheet = false },
+                          containerColor = dialogBgColor,
+                          title = {
+                              Text("Panel de Lince Ibérico & Egipto", color = accentColor, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                          },
+                          text = {
+                              Column(
+                                  modifier = Modifier.verticalScroll(rememberScrollState()),
+                                  verticalArrangement = Arrangement.spacedBy(4.dp)
+                              ) {
+                                  TextButton(
+                                      onClick = {
+                                          showLinceWidgetSheet = false
+                                          currentScreen = "THEMES"
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("☥  Cambiar Tema (Nilo, Pirámides y Lince)", color = Color(0xFFFFD700), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                  }
+
+                                  TextButton(
+                                      onClick = {
+                                          showLinceWidgetSheet = false
+                                          showLinceClockPicker = true
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("🕒  Cambiar Reloj (Egipcio / Lince / Clásico)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                  }
+
+                                  TextButton(
+                                      onClick = {
+                                          showLinceWidgetSheet = false
+                                          currentScreen = "WALLPAPERS"
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("🖼  Cambiar Fondo de Pantalla o Galería", color = Color(0xFF34D399), fontSize = 14.sp)
+                                  }
+
+                                  TextButton(
+                                      onClick = {
+                                          showLinceWidgetSheet = false
+                                          currentScreen = "FAVORITES"
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("★  Editar aplicaciones favoritas", color = Color.White, fontSize = 14.sp)
+                                  }
+
+                                  TextButton(
+                                      onClick = {
+                                          showLinceWidgetSheet = false
+                                          isMovingWidgetMode = true
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("↕  Mover altura del reloj y lista", color = Color.White, fontSize = 14.sp)
+                                  }
+
+                                  TextButton(
+                                      onClick = {
+                                          showLinceWidgetSheet = false
+                                          currentScreen = "SETTINGS"
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Text("⚙  Abrir todos los Ajustes", color = Color(0xFFA855F7), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                  }
+                              }
+                          },
+                          confirmButton = {
+                              TextButton(onClick = { showLinceWidgetSheet = false }) {
+                                  Text("Cerrar", color = Color.Gray)
+                              }
+                          }
+                      )
+                  }
+
+                  // SELECTOR DE RELOJES (EGIPCIOS + LINCE IBÉRICO)
+                  if (showLinceClockPicker) {
+                      AlertDialog(
+                          onDismissRequest = { showLinceClockPicker = false },
+                          containerColor = dialogBgColor,
+                          title = {
+                              Text("Relojes Egipcios y del Lince", color = accentColor, fontWeight = FontWeight.Bold)
+                          },
+                          text = {
+                              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  listOf(
+                                      4 to "☥ 1. Reloj Solar Egipcio de Ra y Ojo de Horus",
+                                      5 to "▲ 2. Cartucho Real Faraónico (Digital Jeroglífico)",
+                                      1 to "🐾 3. Reloj Orejas de Lince (Pinceles Analógicos)",
+                                      2 to "🐾 4. Reloj Huella Salvaje (Pisada Digital)",
+                                      3 to "🐾 5. Reloj Mirada de Doñana (Rústico + Clima)",
+                                      0 to "🕒 6. Reloj Digital Grande Clásico"
+                                  ).forEach { (id, label) ->
+                                      Box(
+                                          modifier = Modifier
+                                              .fillMaxWidth()
+                                              .clip(RoundedCornerShape(10.dp))
+                                              .background(if (linceClockStyle == id) accentColor else Color(0xFF271C19))
+                                              .clickable {
+                                                  linceClockStyle = id
+                                                  clockStyle = if (id == 0) 1 else 0
+                                                  prefs.edit()
+                                                      .putInt("lince_clock_style", id)
+                                                      .putInt("clock_style", clockStyle)
+                                                      .apply()
+                                                  showLinceClockPicker = false
+                                              }
+                                              .padding(12.dp)
+                                      ) {
+                                          Text(
+                                              text = label,
+                                              color = if (linceClockStyle == id) Color.Black else Color.White,
+                                              fontSize = 13.sp,
+                                              fontWeight = FontWeight.Bold
+                                          )
+                                      }
+                                  }
+                              }
+                          },
+                          confirmButton = {
+                              TextButton(onClick = { showLinceClockPicker = false }) {
+                                  Text("Cerrar", color = Color.Gray)
+                              }
+                          }
+                      )
+                  }
+
+                  // MENÚ AL MANTENER PULSADA UNA APP
+                  selectedAppForMenu?.let { app ->
+                      val isFav = app.packageName in favoritePackages
+                      AlertDialog(
+                          onDismissRequest = { selectedAppForMenu = null },
+                          containerColor = dialogBgColor,
+                          title = {
+                              Text(app.label, color = Color.White, fontWeight = FontWeight.Bold)
+                          },
+                          text = {
+                              Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                  TextButton(
+                                      onClick = {
+                                          val updated = favoritePackages.toMutableSet()
+                                          if (isFav) updated.remove(app.packageName) else updated.add(app.packageName)
+                                          favoritePackages = updated
+                                          prefs.edit().putStringSet("favorites", updated).apply()
+                                          selectedAppForMenu = null
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(Icons.Default.Star, contentDescription = null, tint = accentColor)
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text(if (isFav) "Quitar de Favoritos" else "Anclar en Favoritos", color = Color.White)
+                                      }
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          selectedAppForMenu = null
+                                          currentScreen = "FAVORITES"
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White)
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text("Abrir lista de Favoritos", color = Color.White)
+                                      }
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          context.startActivity(
+                                              Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                  data = Uri.fromParts("package", app.packageName, null)
+                                                  addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                              }
+                                          )
+                                          selectedAppForMenu = null
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(Icons.Default.Info, contentDescription = null, tint = Color.White)
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text("Información de la aplicación", color = Color.White)
+                                      }
+                                  }
+                                  TextButton(
+                                      onClick = {
+                                          val intent = Intent(Intent.ACTION_DELETE).apply {
+                                              data = Uri.parse("package:${app.packageName}")
+                                              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                          }
+                                          context.startActivity(intent)
+                                          selectedAppForMenu = null
+                                      },
+                                      modifier = Modifier.fillMaxWidth()
+                                  ) {
+                                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                          Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFFF5252))
+                                          Spacer(modifier = Modifier.width(12.dp))
+                                          Text("Desinstalar", color = Color(0xFFFF5252))
+                                      }
+                                  }
+                              }
+                          },
+                          confirmButton = {
+                              TextButton(onClick = { selectedAppForMenu = null }) {
+                                  Text("Cerrar", color = Color.Gray)
+                              }
+                          }
+                      )
+                  }
+              }
+          }
+
+          // =========================================================================
+          // FUNCIÓN PARA DIBUJAR EL FONDO DE LAS PIRÁMIDES DE EGIPTO Y EL RÍO NILO
+          // =========================================================================
+          fun drawEgyptianNileWallpaper(drawScope: DrawScope, cw: Float, ch: Float, isNight: Boolean) {
+              with(drawScope) {
+                  // 1. Cielo Egipcio (Atardecer Dorado de Ra o Noche Lapislázuli Estrellada)
+                  val skyColors = if (isNight) {
+                      listOf(Color(0xFF060B19), Color(0xFF0F1E3D), Color(0xFF1E3A5F), Color(0xFF2A2438))
+                  } else {
+                      listOf(Color(0xFF1B0E24), Color(0xFF4A1525), Color(0xFF9A3412), Color(0xFFD97706))
+                  }
+                  drawRect(brush = Brush.verticalGradient(colors = skyColors, startY = 0f, endY = ch * 0.65f))
+
+                  // Estrellas si es Noche Faraónica
+                  if (isNight) {
+                      val stars = listOf(
+                          Offset(cw * 0.15f, ch * 0.08f), Offset(cw * 0.45f, ch * 0.06f),
+                          Offset(cw * 0.78f, ch * 0.11f), Offset(cw * 0.88f, ch * 0.22f),
+                          Offset(cw * 0.28f, ch * 0.18f), Offset(cw * 0.62f, ch * 0.15f)
+                      )
+                      stars.forEach { st ->
+                          drawCircle(Color(0xFFFEF08A).copy(alpha = 0.8f), radius = 3f, center = st)
+                      }
+                  }
+
+                  // 2. El Gran Disco Solar de Ra / Luna Llena Dorada detrás de las Pirámides
+                  val sunCenter = Offset(cw * 0.68f, ch * 0.36f)
+                  drawCircle(
+                      brush = Brush.radialGradient(
+                          colors = listOf(
+                              Color(0xFFFEF08A).copy(alpha = 0.9f),
+                              Color(0xFFF59E0B).copy(alpha = 0.45f),
+                              Color.Transparent
+                          ),
+                          center = sunCenter,
+                          radius = cw * 0.42f
+                      ),
+                      radius = cw * 0.42f,
+                      center = sunCenter
+                  )
+                  drawCircle(
+                      color = Color(0xFFFEF9C3).copy(alpha = 0.88f),
+                      radius = cw * 0.13f,
+                      center = sunCenter
+                  )
+
+                  val horizonY = ch * 0.58f
+
+                  // 3. Las 3 Pirámides de Giza en 3D (Cara iluminada + Cara en sombra + Punta Pyramidion de Oro)
+                  fun drawPyramid3D(peakX: Float, peakY: Float, leftBaseX: Float, centerBaseX: Float, rightBaseX: Float, baseY: Float) {
+                      // Cara iluminada (Izquierda)
+                      val litSide = Path().apply {
+                          moveTo(peakX, peakY)
+                          lineTo(leftBaseX, baseY)
+                          lineTo(centerBaseX, baseY)
+                          close()
+                      }
+                      drawPath(
+                          path = litSide,
+                          color = if (isNight) Color(0xFF334155) else Color(0xFFD97706)
+                      )
+                      // Cara en sombra (Derecha)
+                      val darkSide = Path().apply {
+                          moveTo(peakX, peakY)
+                          lineTo(centerBaseX, baseY)
+                          lineTo(rightBaseX, baseY)
+                          close()
+                      }
+                      drawPath(
+                          path = darkSide,
+                          color = if (isNight) Color(0xFF0F172A) else Color(0xFF451A03)
+                      )
+                      // Cúspide de Oro Real (Pyramidion)
+                      val capRatio = 0.16f
+                      val capY = peakY + (baseY - peakY) * capRatio
+                      val capLeftX = peakX + (leftBaseX - peakX) * capRatio
+                      val capCenterX = peakX + (centerBaseX - peakX) * capRatio
+                      val capRightX = peakX + (rightBaseX - peakX) * capRatio
+                      val goldCap = Path().apply {
+                          moveTo(peakX, peakY)
+                          lineTo(capLeftX, capY)
+                          lineTo(capCenterX, capY)
+                          lineTo(capRightX, capY)
+                          close()
+                      }
+                      drawPath(goldCap, Color(0xFFFFD700))
+                      // Arista dorada central
+                      drawLine(Color(0xFFFFD700).copy(alpha = 0.7f), Offset(peakX, peakY), Offset(centerBaseX, baseY), strokeWidth = 2f)
+                  }
+
+                  // Pirámide lejana izquierda (Menkaure)
+                  drawPyramid3D(cw * 0.25f, ch * 0.47f, cw * 0.08f, cw * 0.23f, cw * 0.38f, horizonY)
+                  // Gran Pirámide central (Keops)
+                  drawPyramid3D(cw * 0.56f, ch * 0.37f, cw * 0.28f, cw * 0.53f, cw * 0.80f, horizonY)
+                  // Pirámide derecha (Kefrén)
+                  drawPyramid3D(cw * 0.84f, ch * 0.41f, cw * 0.62f, cw * 0.81f, cw * 1.04f, horizonY)
+
+                  // 4. Dunas del Desierto del Sáhara
+                  val desertBg = Path().apply {
+                      moveTo(0f, horizonY)
+                      quadraticBezierTo(cw * 0.3f, horizonY - 18f, cw * 0.6f, horizonY + 8f)
+                      quadraticBezierTo(cw * 0.85f, horizonY + 22f, cw, horizonY - 6f)
+                      lineTo(cw, ch)
+                      lineTo(0f, ch)
+                      close()
+                  }
+                  drawPath(
+                      path = desertBg,
+                      brush = Brush.verticalGradient(
+                          colors = if (isNight) {
+                              listOf(Color(0xFF1E1B2E), Color(0xFF090A10))
+                          } else {
+                              listOf(Color(0xFF78350F), Color(0xFF271206))
+                          },
+                          startY = horizonY,
+                          endY = ch
+                      )
+                  )
+
+                  // 5. El Majestuoso Río Nilo serpenteando desde las pirámides hasta el borde inferior
+                  val nileRiver = Path().apply {
+                      moveTo(cw * 0.54f, horizonY + 4f)
+                      quadraticBezierTo(cw * 0.32f, ch * 0.68f, cw * 0.45f, ch * 0.80f)
+                      quadraticBezierTo(cw * 0.60f, ch * 0.90f, cw * 0.25f, ch)
+                      lineTo(cw, ch)
+                      lineTo(cw, ch * 0.82f)
+                      quadraticBezierTo(cw * 0.82f, ch * 0.72f, cw * 0.66f, horizonY + 4f)
+                      close()
+                  }
+                  drawPath(
+                      path = nileRiver,
+                      brush = Brush.verticalGradient(
+                          colors = if (isNight) {
+                              listOf(Color(0xFF0284C7), Color(0xFF1E3A8A), Color(0xFF090D16))
+                          } else {
+                              listOf(Color(0xFF0E7490), Color(0xFF0369A1), Color(0xFF082F49))
+                          },
+                          startY = horizonY,
+                          endY = ch
+                      )
+                  )
+
+                  // Reflejos de oro del Sol/Luna sobre las aguas del Nilo
+                  for (i in 0..14) {
+                      val ry = horizonY + 25f + i * ((ch - horizonY - 30f) / 15f)
+                      val rxCenter = cw * 0.62f + sin(i * 0.7f) * (cw * 0.08f)
+                      val halfLen = (18f + i * 5.5f)
+                      drawLine(
+                          color = Color(0xFFFFD700).copy(alpha = 0.55f),
+                          start = Offset(rxCenter - halfLen, ry),
+                          end = Offset(rxCenter + halfLen, ry),
+                          strokeWidth = 3f,
+                          cap = StrokeCap.Round
+                      )
+                  }
+              }
+          }
+
+          // FUNCIÓN PARA DIBUJAR LA SILUETA DEL LINCE IBÉRICO EN CANVAS
+          fun drawLinceSilhouette(drawScope: DrawScope, offset: Offset, size: Float, color: Color) {
+              val p = Path().apply {
+                  val ox = offset.x
+                  val oy = offset.y
+                  moveTo(ox, oy + size * 0.9f)
+                  quadraticBezierTo(ox + size * 0.1f, oy + size * 0.4f, ox + size * 0.3f, oy + size * 0.35f)
+                  lineTo(ox + size * 0.35f, oy + size * 0.12f)
+                  lineTo(ox + size * 0.33f, oy - size * 0.08f)
+                  lineTo(ox + size * 0.38f, oy + size * 0.15f)
+                  lineTo(ox + size * 0.44f, oy + size * 0.08f)
+                  lineTo(ox + size * 0.42f, oy - size * 0.12f)
+                  lineTo(ox + size * 0.48f, oy + size * 0.15f)
+                  quadraticBezierTo(ox + size * 0.52f, oy + size * 0.16f, ox + size * 0.58f, oy + size * 0.22f)
+                  lineTo(ox + size * 0.65f, oy + size * 0.28f)
+                  lineTo(ox + size * 0.58f, oy + size * 0.33f)
+                  quadraticBezierTo(ox + size * 0.52f, oy + size * 0.45f, ox + size * 0.48f, oy + size * 0.52f)
+                  quadraticBezierTo(ox + size * 0.44f, oy + size * 0.75f, ox + size * 0.42f, oy + size * 0.95f)
+                  lineTo(ox + size * 0.36f, oy + size * 0.95f)
+                  quadraticBezierTo(ox + size * 0.34f, oy + size * 0.7f, ox, oy + size * 0.9f)
+                  close()
+              }
+              drawScope.drawPath(p, color)
+          }
+
+          @Composable
+          fun SettingsCardItem(
+              title: String,
+              subtitle: String,
+              accent: Color,
+              onClick: () -> Unit
+          ) {
+              Column(
+                  modifier = Modifier
+                      .fillMaxWidth()
+                      .clip(RoundedCornerShape(16.dp))
+                      .background(Color(0xFF1E1412))
+                      .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                      .clickable { onClick() }
+                      .padding(16.dp)
+              ) {
+                  Text(title, color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(subtitle, color = Color.White.copy(alpha = 0.72f), fontSize = 13.sp)
+              }
+          }
+
+          @Composable
+          fun LinceAppRow(
+              app: AppItem,
+              textColor: Color,
+              fontFamily: FontFamily,
+              iconPackMode: String,
+              iconSizeDp: Float,
+              hideName: Boolean,
+              horizontalShiftDp: Float,
+              onClick: () -> Unit,
+              onLongClick: () -> Unit
+          ) {
+              val iconColorFilter = remember(iconPackMode) {
+                  when (iconPackMode) {
+                      "gold_pharaoh" -> ColorFilter.colorMatrix(
+                          ColorMatrix(
+                              floatArrayOf(
+                                  0f, 0f, 0f, 0f, 255f,
+                                  0f, 0f, 0f, 0f, 215f,
+                                  0f, 0f, 0f, 0f, 0f,
+                                  0f, 0f, 0f, 1f, 0f
+                              )
+                          )
+                      )
+                      "white_minimal" -> ColorFilter.colorMatrix(
+                          ColorMatrix(
+                              floatArrayOf(
+                                  0f, 0f, 0f, 0f, 255f,
+                                  0f, 0f, 0f, 0f, 255f,
+                                  0f, 0f, 0f, 0f, 255f,
+                                  0f, 0f, 0f, 1f, 0f
+                              )
+                          )
+                      )
+                      "black_essence" -> ColorFilter.colorMatrix(
+                          ColorMatrix(
+                              floatArrayOf(
+                                  0f, 0f, 0f, 0f, 18f,
+                                  0f, 0f, 0f, 0f, 24f,
+                                  0f, 0f, 0f, 0f, 39f,
+                                  0f, 0f, 0f, 1f, 0f
+                              )
+                          )
+                      )
+                      "neon_cyan" -> ColorFilter.colorMatrix(
+                          ColorMatrix(
+                              floatArrayOf(
+                                  0f, 0f, 0f, 0f, 245f,
+                                  0f, 0f, 0f, 0f, 158f,
+                                  0f, 0f, 0f, 0f, 11f,
+                                  0f, 0f, 0f, 1f, 0f
+                              )
+                          )
+                      )
+                      else -> null
+                  }
+              }
+
+              Row(
+                  modifier = Modifier
+                      .fillMaxWidth()
+                      .offset(x = horizontalShiftDp.dp)
+                      .clip(RoundedCornerShape(14.dp))
+                      .pointerInput(app.packageName) {
+                          detectTapGestures(
+                              onTap = { onClick() },
+                              onLongPress = { onLongClick() }
+                          )
+                      }
+                      .padding(horizontal = 4.dp, vertical = 7.dp),
+                  verticalAlignment = Alignment.CenterVertically
+              ) {
+                  if (iconPackMode == "default" && app.icon != null) {
+                      Image(
+                          bitmap = app.icon.asImageBitmap(),
+                          contentDescription = null,
+                          modifier = Modifier
+                              .size(iconSizeDp.dp)
+                              .clip(RoundedCornerShape(10.dp))
+                      )
+                  } else {
+                      val glyphColor = when (iconPackMode) {
+                          "gold_pharaoh" -> Color(0xFFFFD700)
+                          "black_essence" -> Color(0xFF1E1412)
+                          "neon_cyan" -> Color(0xFFF59E0B)
+                          else -> Color.White
+                      }
+                      Box(
+                          modifier = Modifier
+                              .size(iconSizeDp.dp)
+                              .background(Color.Black.copy(alpha = 0.28f), CircleShape)
+                              .border(1.8.dp, glyphColor.copy(alpha = 0.75f), CircleShape),
+                          contentAlignment = Alignment.Center
+                      ) {
+                          if (app.icon != null && iconColorFilter != null) {
+                              Image(
+                                  bitmap = app.icon.asImageBitmap(),
+                                  contentDescription = null,
+                                  colorFilter = iconColorFilter,
+                                  modifier = Modifier
+                                      .size((iconSizeDp * 0.58f).dp)
+                                      .clip(CircleShape)
+                              )
+                          } else {
+                              Text(
+                                  text = app.initial.toString(),
+                                  color = glyphColor,
+                                  fontSize = 14.sp,
+                                  fontWeight = FontWeight.Bold
+                              )
+                          }
+                      }
+                  }
+
+                  if (!hideName) {
+                      Spacer(modifier = Modifier.width(16.dp))
+                      Text(
+                          text = app.label,
+                          color = textColor,
+                          fontSize = 16.sp,
+                          fontFamily = fontFamily,
+                          fontWeight = FontWeight.Medium,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis
+                      )
+                  }
+              }
+          }
+
+          fun launchApp(context: Context, packageName: String) {
+              context.packageManager.getLaunchIntentForPackage(packageName)?.let {
+                  it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  context.startActivity(it)
+              }
+          }
+
+          fun drawableToBitmap(drawable: Drawable): Bitmap {
+              if (drawable is BitmapDrawable && drawable.bitmap != null) return drawable.bitmap
+              val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+              val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+              val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+              val canvas = AndroidCanvas(bmp)
+              drawable.setBounds(0, 0, canvas.width, canvas.height)
+              drawable.draw(canvas)
+              return bmp
+          }
+          EOF
+          sed -i 's/^          //' app/src/main/java/com/atenea/pixelultralauncher/MainActivity.kt
+
+          gradle assembleDebug --no-daemon
+
+      - name: 5. Publicar APK en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v7.0.${{ github.run_number }}
+          name: "Lince Iberico & Egipto v7.0.${{ github.run_number }}"
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
